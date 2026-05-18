@@ -1,0 +1,27 @@
+# Backups created by install.sh
+*.bak
+*.bak.*
+
+# Machine-specific Claude settings (permissions, MCP servers, secrets)
+claude/settings.local.json
+claude/.credentials.json
+
+# Claude runtime state — never sync these
+claude/projects/
+claude/sessions/
+claude/history.jsonl
+claude/plugins/
+claude/cache/
+claude/file-history/
+claude/paste-cache/
+claude/session-env/
+claude/backups/
+claude/debug/
+
+# OS junk
+.DS_Store
+Thumbs.db
+
+# Editor cruft
+*.swp
+*.swo

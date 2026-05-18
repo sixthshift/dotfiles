@@ -1,0 +1,51 @@
+# dotfiles
+
+Personal configuration that travels across machines.
+
+## Layout
+
+- `claude/` — Claude Code user-level config (CLAUDE.md, skills, agents, hooks, settings)
+- `shell/` — shell configuration (.bashrc, .zshrc, .shell-config.sh)
+- `git/` — git configuration (.gitconfig, global ignore)
+- `editor/` — editor configuration (nvim, vim, vscode)
+
+Each subdirectory mirrors a real location under `$HOME` and is symlinked into place by `install.sh`. New tools go in their own top-level directory; add the matching `link` line to `install.sh`.
+
+## Setup on a new machine
+
+```bash
+git clone <your-repo-url> ~/dotfiles
+cd ~/dotfiles
+./install.sh
+```
+
+`install.sh` is idempotent: re-running it updates symlinks without losing existing content. Anything real in the way gets backed up to `*.bak.<timestamp>`.
+
+## What syncs vs what stays local
+
+**Tracked in git** (portable):
+- `claude/CLAUDE.md` — universal instructions
+- `claude/skills/`, `claude/agents/`, `claude/hooks/` — portable skills/agents/hooks
+- `claude/settings.json` — global preferences (model, theme, defaults)
+
+**Gitignored** (machine-specific or sensitive):
+- `~/.claude/settings.local.json` — local permissions, MCP server paths
+- `~/.claude/projects/`, `sessions/`, `history.jsonl`, `plugins/`, `cache/`, etc. — runtime state, never in git
+- Anything in `.gitignore`
+
+## Adding a new tool
+
+1. Create a subdirectory (e.g. `tmux/`).
+2. Move the real config file in (e.g. `tmux/.tmux.conf`).
+3. Add a line to `install.sh`: `link "tmux/.tmux.conf" "$HOME/.tmux.conf"`.
+4. Re-run `./install.sh`.
+
+## Pushing to GitHub
+
+```bash
+cd ~/dotfiles
+git init
+git add .
+git commit -m "initial dotfiles"
+gh repo create dotfiles --public --source=. --push    # or --private
+```
