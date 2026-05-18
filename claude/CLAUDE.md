@@ -49,18 +49,14 @@ What NOT to do automatically — these need to be asked for, not assumed:
 
 **Documentation-driven exploration.** When exploring code to answer a question or understand a module, look for relevant documentation first (conventions, architecture, decision records), then read source. Documentation provides constraints, rationale, and boundaries that source alone does not reveal.
 
-**Documentation gap identification.** When exploring an area and the ideal documentation is missing, say so explicitly. Once you've learned the answer from source, write that documentation in the appropriate location, following existing structure. The most valuable docs to create: conventions/patterns (invisible rules), decision rationale (rejected alternatives), and module boundaries — not implementation details or API references that can be read from source.
-
-**Module entry-point docs.** Each package should have a short orientation doc (or a comment block at its entry point) answering three questions: (1) what does this module own, (2) what are its key boundaries/dependencies, (3) what will surprise you — the non-obvious constraint or design choice that trips people up. Create one if missing when entering a package.
-
 ## Documentation Stance
 
 Three layers of documentation, each with a different role:
 
 - **Vision** — intent, philosophy, rejected alternatives. Prose is the right medium.
-- **Contract** (types + tests) — source of truth for behavior. Read these first when asked "how does X work?"
-- **Implementation** — fulfills contracts. Don't document; the code is the doc.
+- **Contract** — the source of truth for behavior. In typed codebases this is types + tests; elsewhere it's whatever serves the same role.
+- **Implementation** — fulfills the contract.
 
-Prefer tests over prose for documenting runtime behavior. Test names should be complete sentences: `it('retries failed syncs up to 3 times with exponential backoff')`. Use prose for vision, rationale, module boundaries, and surprises (non-obvious constraints) — not for what the code already says clearly.
+Use prose for vision, rationale, module boundaries, and surprises (non-obvious constraints) — not for what the code already says clearly.
 
-When prose IS earned: complex algorithmic flow, multi-step orchestration, state machines, or other cases where types and test names genuinely can't carry the meaning.
+When prose IS earned: complex algorithmic flow, multi-step orchestration, state machines, or other cases where the contract layer genuinely can't carry the meaning.
