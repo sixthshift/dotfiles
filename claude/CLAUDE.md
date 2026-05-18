@@ -5,10 +5,12 @@ Universal preferences and stances that apply across any project. Project-specifi
 ## Response Style
 
 - Lead with the recommendation or answer first, then provide supporting detail.
-- Avoid walls of text; prefer concise rundowns and offer to expand on request.
 - When asked a specific design question, answer it directly before pivoting to broader architecture.
+- Avoid walls of text; prefer concise rundowns and offer to expand on request.
 - Label long-response sections so they're visibly skippable (e.g. `## Details`, `## Reference`). Decision-order, not thinking-order.
 - Prefer shorter responses by default — expanding on request is cheap; re-reading walls of text is not.
+- **State limits honestly.** If you can't verify the result (no browser to test UI, no way to run a CI flow, no production access), say so explicitly rather than claiming success. Type checks and tests verify code correctness, not feature correctness.
+- **Ask at real forks.** If two interpretations of a request are both reasonable, or two approaches have meaningfully different tradeoffs, ask before choosing. Silent picks cost more than clarifications.
 
 ## Code Elegance
 
@@ -16,7 +18,7 @@ Goal: the structure that makes code correct should also be what makes it readabl
 
 Apply when introducing or changing structure. Each rule carries its own check — apply the check, not just the rule:
 
-- **Structure must come from the problem.** Before adding a boundary, layer, class, or abstraction, name the domain property it mirrors. If you can't name one — if the only justification is "cleaner," "more flexible," or "DRY" — remove it.
+- **Structure must come from the problem.** Before adding a boundary, layer, class, or abstraction, name the domain property it mirrors. If you can't name one — if the only justification is "cleaner," "more flexible," or "DRY" — remove it. *Example violation: creating a `BaseService` abstract class because three services share methods. They share methods because today's implementations overlap — not because the problem has a "base service" concept.*
 - **Put complexity where the problem is hard.** Inelegance is rarely too much total complexity; it's complexity in the wrong place — elaborate machinery around a trivial core, or a hard core smeared thin to look simple. Point to where the problem's hardness lives in the code. If it's everywhere, it's nowhere.
 - **No comments explaining what.** Mentally delete the explanatory comment. If intent is no longer recoverable from structure alone, the structure is the bug — not the missing comment. Comments are for *why* only.
 - **One abstraction level per unit.** Don't interleave domain logic and mechanism (e.g. business rules + buffer manipulation) in one function. Read the unit aloud as a sentence; if the abstraction level lurches mid-sentence, split it at the lurch.
@@ -28,16 +30,22 @@ Departures are fine when justified by a specific property of the problem. A depa
 
 ## Refactor Discipline
 
+- Complete ALL cascading changes in one pass — update consumers, tests, and imports before stopping. After any refactor that changes exports, imports, or type signatures, run typecheck to catch stale references before reporting done.
 - When refactoring naming/structure, audit ALL identifiers (routes, installers, comments, docs) — don't rely on sed alone.
 - Check sibling conventions (singular vs plural) BEFORE proposing a name.
 - Apply changes consistently across all affected modules, not just the obvious ones — ask if scope is unclear.
-- Don't introduce configurable settings unless explicitly requested; prefer ambient/implicit defaults.
 
-## Workflow
+## Action Discipline
 
-**Design questions.** When asked an architecture or design question, answer the question concisely first. Do not launch into a refactoring plan or implementation unless asked.
+What NOT to do automatically — these need to be asked for, not assumed:
 
-**Refactor cascades.** When performing multi-file refactors, complete ALL cascading changes in one pass — update consumers, tests, and imports before stopping. After any refactor that changes exports, imports, or type signatures, run typecheck to catch stale references before reporting done.
+- **Don't auto-commit.** When work reaches a clean state, stop at the staging step. The user runs `git commit` themselves.
+- **Don't restructure code for testability.** If tests are hard to write, fix the tests or test infrastructure — not the production code. Production code shape is driven by intent and domain, not test mocking convenience.
+- **Don't expand scope.** A bug fix doesn't need surrounding cleanup. A one-shot script doesn't need a helper. Three similar lines is better than a premature abstraction. *Example: the user asks to fix a null check; you fix it and also rename three variables you found unclear and reformat the file. That's scope expansion — the renames and reformat need their own ask.*
+- **Don't introduce configurable settings unless explicitly requested.** Prefer ambient/implicit defaults; configuration is overhead. *Example: adding a `verbose: boolean` option when one log level is fine; adding a `retries` parameter when the call should always retry exactly twice.*
+- **Name files for purpose, not infrastructure.** If you'd have to open the file to know what it does, rename it. Avoid `*-client.ts`, `*-service.ts`, `*-adapter.ts` style names.
+
+## Exploration
 
 **Documentation-driven exploration.** When exploring code to answer a question or understand a module, look for relevant documentation first (conventions, architecture, decision records), then read source. Documentation provides constraints, rationale, and boundaries that source alone does not reveal.
 
@@ -45,20 +53,14 @@ Departures are fine when justified by a specific property of the problem. A depa
 
 **Module entry-point docs.** Each package should have a short orientation doc (or a comment block at its entry point) answering three questions: (1) what does this module own, (2) what are its key boundaries/dependencies, (3) what will surprise you — the non-obvious constraint or design choice that trips people up. Create one if missing when entering a package.
 
-## Documentation-Test Unity
+## Documentation Stance
 
-Three layers:
-- **Vision** — intent, philosophy, not testable
-- **Contract** (types + tests) — source of truth, readable as spec
-- **Implementation** — fulfills contracts, can change freely
+Three layers of documentation, each with a different role:
 
-Workflow:
-1. Write the contract (types).
-2. Write tests as specifications — test names ARE documentation.
-3. Implementation follows.
-4. Never write prose docs for runtime behavior.
+- **Vision** — intent, philosophy, rejected alternatives. Prose is the right medium.
+- **Contract** (types + tests) — source of truth for behavior. Read these first when asked "how does X work?"
+- **Implementation** — fulfills contracts. Don't document; the code is the doc.
 
-When asked "how does X work?" — read the tests first. Test names should be complete sentences: `it('retries failed syncs up to 3 times with exponential backoff')`.
+Prefer tests over prose for documenting runtime behavior. Test names should be complete sentences: `it('retries failed syncs up to 3 times with exponential backoff')`. Use prose for vision, rationale, module boundaries, and surprises (non-obvious constraints) — not for what the code already says clearly.
 
-**Never:** write prose for runtime behavior, duplicate behavior docs, document implementation details.
-**Always:** test descriptions as specifications, add tests (not comments) when unclear, reference test files by path:line.
+When prose IS earned: complex algorithmic flow, multi-step orchestration, state machines, or other cases where types and test names genuinely can't carry the meaning.
