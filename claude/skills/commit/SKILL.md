@@ -9,6 +9,14 @@ Analyze staged changes and create focused commits. If changes span multiple conc
 
 ## Instructions
 
+### Step 0: Defer to a project skill if one exists
+
+This is a user-level (global) skill, which takes precedence over a project skill of the same name. If the current project defines its own `commit` skill, that one is more specific and should win.
+
+Check for a project-level commit skill at `.claude/skills/commit/SKILL.md` relative to the project root. If it exists, **read it and follow its instructions instead of the rest of this file**, then stop. (Don't re-invoke `commit` through the Skill tool — the name resolves back to this user skill and would loop; read the project file directly.)
+
+If no project skill exists, continue with the steps below.
+
 ### Step 1: Capture original state
 
 1. Run `git status` to see the working tree.
