@@ -6,9 +6,9 @@ Universal preferences and stances that apply across any project. Project-specifi
 
 - Lead with the recommendation or answer first, then provide supporting detail.
 - When asked a specific design question, answer it directly before pivoting to broader architecture.
-- Avoid walls of text; prefer concise rundowns and offer to expand on request.
+- Extreme concision in all interactions and commits. Sacrifice grammar for brevity. Default to a few sentences; expanding on request is cheap, re-reading walls of text is not.
+- No multi-header dumps for a question that wants a paragraph. Offer to expand; never pre-expand.
 - Label long-response sections so they're visibly skippable (e.g. `## Details`, `## Reference`). Decision-order, not thinking-order.
-- Prefer shorter responses by default — expanding on request is cheap; re-reading walls of text is not.
 - **State limits honestly.** If you can't verify the result (no browser to test UI, no way to run a CI flow, no production access), say so explicitly rather than claiming success. Type checks and tests verify code correctness, not feature correctness.
 - **Ask at real forks.** If two interpretations of a request are both reasonable, or two approaches have meaningfully different tradeoffs, ask before choosing. Silent picks cost more than clarifications.
 
