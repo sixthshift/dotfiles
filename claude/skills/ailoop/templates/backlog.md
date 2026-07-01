@@ -26,10 +26,12 @@ may fan out in parallel worktrees; tickets sharing files serialize.
     - what already exists (which prior tickets built what it depends on)
     - the precise deliverable — build only this
 - **acceptance:** |
-    The ticket-local oracle — checkable, not vibes:
+    The ticket-local oracle — checkable, not vibes. This is ON TOP OF the
+    baseline gate in oracle.md (type-check/build/lint/full test suite) that every
+    ticket clears. Add tests for new behavior (skip only for pure scaffold/config).
     - `<command>` exits 0
     - `<behavioral check with expected result>`
-- **evidence:**                              # filled on completion — real output, not claims
+- **evidence:**                              # filled on completion — real output; the INDEPENDENT re-verify's, not the builder's claim
 
 ---
 

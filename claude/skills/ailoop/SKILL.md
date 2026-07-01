@@ -61,9 +61,11 @@ calling Workflows in sequence.
    machine-checkable. If the spec doesn't give you one, stop and ask the human
    to supply it. This is the *only* interruption allowed in a full run, and it
    happens at intake — before the drive, never during.
-2. **Trust the oracle, not the builder.** A worker agent reporting "done" means
-   nothing. Only an oracle result counts. Only a **merged-tree** oracle result
-   counts (per-worktree green is not integration-green).
+2. **Trust the oracle, not the builder.** A worker reporting "done" is a claim,
+   never a result — at every level. Per ticket, an **independent re-verify**
+   (baseline + acceptance), not the builder's self-report, is what counts; per
+   phase, only a **merged-tree** oracle result counts (per-worktree green is not
+   integration-green). See **Verification**.
 3. **Stop before you thrash.** Hard caps on iterations and token budget.
    Escalate to the human with a diagnosis rather than burning the budget on a
    wall you keep hitting.
@@ -119,9 +121,11 @@ evidence:                                      # filled on completion (proof, no
 - **`context`** must let a subagent that has never seen this conversation
   succeed. If you can't write it self-contained, the ticket is too big or too
   vague — decompose or sharpen it.
-- **`acceptance`** is the ticket-local oracle. It is narrower than the phase
-  oracle (`oracle.md`); passing all a phase's tickets, then passing the phase
-  oracle on the merged tree, is what closes a phase.
+- **`acceptance`** is the ticket-local oracle — its bespoke behavioral checks,
+  *on top of* the mandated baseline (type-check/build/lint/tests) every ticket
+  clears (see **Verification**). It is narrower than the phase oracle
+  (`oracle.md`); passing every ticket (baseline + acceptance, independently
+  re-verified), then the phase oracle on the merged tree, is what closes a phase.
 
 ### Decomposition (the anti-rot move)
 
@@ -142,6 +146,46 @@ Splitting happens at two moments:
   filled with the actual check output.
 - The backlog is append-mostly: don't delete tickets, mark them `done` /
   `decomposed`. The history is part of the audit trail.
+
+---
+
+## Verification — what every ticket must clear
+
+"Trust the oracle, not the builder" applies at the **ticket** level, not just at
+phase close. A ticket is `done` only when an **independent** check — never the
+builder's self-report alone — confirms three things:
+
+1. **Baseline (every ticket, no exceptions).** The project's standing quality
+   gate, defined once in `oracle.md` and applied to *every* ticket regardless of
+   what it touched:
+   - type-check / compile clean
+   - build succeeds
+   - lint clean (if the project lints)
+   - **the full existing test suite passes** — this is the regression guard, and
+     it is how a ticket that breaks a previously-green one is caught
+     *immediately*, not at phase close.
+   Detect the exact commands from the project's manifest at intake (Stage 1.0).
+2. **Ticket acceptance.** The ticket's own behavioral checks (its `acceptance`
+   field), with captured output as evidence.
+3. **New tests for new behavior.** A ticket that adds behavior must add tests
+   covering it, green under the baseline — this is how the regression net grows
+   as the build proceeds. Exempt only pure scaffold/config tickets with no
+   behavior to test, and say so in the ticket.
+
+The builder runs all three itself and returns the evidence — but its word is a
+**claim**. The authoritative signal is the **independent re-verify**: a separate
+agent (or you) re-runs baseline + acceptance on the ticket's tree before the
+ticket is accepted. In the fan-out Workflow this is a dedicated Verify stage per
+ticket, run on the worker's worktree *before* integration; for a single-ticket
+dispatch, you re-run it yourself.
+
+Three gates, widening — a ticket must pass the narrow one to earn the next:
+
+**baseline + acceptance (independently re-verified, per ticket) → integration
+(merge clean) → phase oracle (merged tree).**
+
+A ticket that regresses the baseline is a **failed** ticket even if its own
+acceptance passes.
 
 ---
 
@@ -176,6 +220,10 @@ human sees it and the drive runs unattended after.
    - a **behavioral** acceptance test the spec names explicitly (the sharpest
      kind — e.g. "given these 3 contrasting inputs, the output must differ in
      *this* way"). Write it as a runnable harness, not a vibe.
+
+   Also record the **baseline gate** in `oracle.md` — the type-check / build /
+   lint / full-test-suite commands (from Stage 1.0's toolchain detection) that
+   *every* ticket must pass regardless of what it touches (see **Verification**).
 
 3. **The refuse-to-start gate.** Stop and ask the human if either:
    - a phase's oracle is not executable **as written** (hand-wavy / no runnable
@@ -222,14 +270,18 @@ Among the ready set, group by **file disjointness**:
 
 ### 2.2 Dispatch
 - **Single ticket** → one `Agent` subagent. Its prompt is the ticket's
-  `context` + `acceptance` + the frozen locked decisions. Nothing else — the
-  ticket must stand alone.
+  `context` + `acceptance` + the baseline gate + the frozen locked decisions. It
+  must build, add tests for new behavior, then run baseline + acceptance and
+  return the captured output. Then **you re-verify** (re-run baseline +
+  acceptance) before accepting — its self-report is only a claim.
 - **A disjoint batch** → the `build-phase` Workflow (see the template): one
-  worker `agent()` per ticket, each `isolation: 'worktree'`, then **merge**,
-  then gate on the merged tree.
+  worker `agent()` per ticket, each `isolation: 'worktree'`, then a per-ticket
+  **Verify** stage on each worktree, then **merge** the verified ones, then gate
+  on the merged tree.
 
 Every worker is instructed to return one of:
-- `{ done: true, evidence }` — built it, acceptance checks run, output attached;
+- `{ done: true, evidence }` — built it, **added tests for new behavior**, ran
+  the **baseline (type-check/build/lint/tests) + acceptance**, output attached;
 - `{ tooBig: true, proposedTickets: [...] }` — the ticket is bigger than one
   session; here is the proposed split (it did **not** half-build it);
 - `{ blocked: true, reason }` — it hit a missing dependency or contradiction in
@@ -239,12 +291,15 @@ Wait for the `<task-notification>`. Never assume a worker succeeded.
 
 ### 2.3 Judge each result
 The judgment the inner body cannot do:
-- **`done` + acceptance genuinely passed + in scope** → mark the ticket `done`,
-  paste its evidence, update the backlog. This may unblock downstream tickets.
-- **`done` but acceptance failed** (worker overclaimed) → trust the check, not
-  the worker. Diagnose *why* using the spec — many specs tell you where to look
-  (e.g. "if the behavior doesn't flip, the prompt is wrong, not the code"). Form
-  a specific hypothesis and re-dispatch the ticket with a targeted fix note.
+- **`done` + independent re-verify green (baseline + acceptance) + in scope** →
+  mark the ticket `done`, paste the **re-verify** evidence, update the backlog.
+  This may unblock downstream tickets. (The worker's own report never suffices —
+  the independent re-verify is the signal.)
+- **re-verify red** — acceptance failed, OR the ticket **regressed the baseline**
+  (broke type-check/build/a previously-green test) even though its own acceptance
+  passed → the ticket failed. Diagnose *why* using the spec — many specs tell you
+  where to look (e.g. "if the behavior doesn't flip, the prompt is wrong, not the
+  code"). Form a specific hypothesis and re-dispatch with a targeted fix note.
   Increment the ticket's attempt count.
 - **`tooBig`** → mark the parent `decomposed`, push the proposed child tickets
   onto the backlog with dependencies, refine their `context`/`acceptance` so
@@ -313,11 +368,15 @@ judge decision.
 
 - [ ] The ticket is cold-start runnable (self-contained `context`).
 - [ ] Its `acceptance` is executable (not vibes).
+- [ ] Worker ran the baseline (type-check/build/lint/full test suite) + acceptance.
+- [ ] New behavior has new tests, green under the baseline.
+- [ ] **Independent re-verify** passed (not the builder's word) and the ticket
+      did not regress the baseline.
 - [ ] Workers cite locked decisions; none re-litigated.
 - [ ] Ready set correct (all `depends_on` truly `done`); batch is file-disjoint.
 - [ ] Only merged-tree checks count as green; phase oracle run before closing a phase.
 - [ ] Attempt and budget caps enforced before every re-dispatch.
-- [ ] Failing acceptance set is shrinking; if not for 2 attempts → escalate.
+- [ ] Failing set is shrinking; if not for 2 attempts → escalate.
 - [ ] Nothing built crosses the out-of-scope list.
 - [ ] `backlog.md` and `ledger.md` updated.
 

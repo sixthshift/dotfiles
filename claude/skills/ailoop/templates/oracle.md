@@ -18,6 +18,18 @@ missing check.
 
 - ...
 
+## Baseline gate (every ticket, no exceptions)
+
+<!-- The project's standing quality gate, from Stage 1.0 toolchain detection.
+     EVERY ticket must pass all of these regardless of what it touched — this is
+     also the regression guard. Use THIS project's real commands. -->
+
+- [ ] type-check / compile: `<command>` → exit 0
+- [ ] build: `<command>` → exit 0
+- [ ] lint (if the project lints): `<command>` → exit 0
+- [ ] full existing test suite: `<command>` → all pass
+- [ ] new behavior ships with new tests, green under the above
+
 ## Per-phase acceptance (executable)
 
 Each check is a command + expected result, or a scripted behavioral test. A phase
