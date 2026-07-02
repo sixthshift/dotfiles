@@ -8,20 +8,23 @@ done). Newest entry at the bottom. Never rewrite history; append corrections.
 ## Run header
 - **spec:** <path> @ <commit/hash if any>
 - **started:** <timestamp>
-- **caps:** max 3 attempts/ticket · thrash=2 · budget=<ceiling>
+- **caps:** max 3 attempts/ticket · thrash=2 · chunk=6/invocation
 
 ## Journal
 
 <!-- One entry per event. Format:
 
-[<seq>] <ticket|phase> — <event>
-  decision: continue | retry | decompose | escalate | close-phase
+[<seq>] <ticket|phase|run> — <event>
+  decision: continue | retry | decompose | escalate | close-phase | amend-oracle | end-chunk
   why: <one line grounded in the oracle or spec>
-  attempt: <n/max>   budget-spent: <approx>
-  evidence: <link or inline check output for done/gate events>
+  attempt: <n/max>
+  evidence: <link or inline check output for done/gate/amend events>
 
+Chunk boundaries, oracle amendments (mechanical only — cite evidence), red-team
+findings, gate-red bisections, and gaming judgments all get entries.
 -->
 
-[0001] intake — seeded backlog (N tickets), oracle derived, caps set
+[0001] intake — seeded backlog (N tickets), oracle derived, acceptance red-teamed
+       (M checks sharpened), caps set
   decision: proceed
   why: every phase oracle is executable; no missing checks

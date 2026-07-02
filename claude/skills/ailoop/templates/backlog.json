@@ -1,0 +1,36 @@
+{
+  "$doc": [
+    "The loop's driver — machine-readable on purpose: readiness, batches, and",
+    "cap breaches are computed by schedule.mjs, never by eye. Append-mostly:",
+    "never delete a ticket; mark it done or decomposed.",
+    "status: todo | in-progress | done | blocked | decomposed ('ready' is computed).",
+    "files is a CONTRACT: the verifier diffs the branch and fails undeclared",
+    "touches (package.json + lockfiles allowlisted for every ticket).",
+    "attempts is the durable diagnosis log — one entry per failed attempt, so a",
+    "retry in a fresh session never re-diagnoses from scratch.",
+    "evidence holds the INDEPENDENT re-verify's output, not the builder's claim."
+  ],
+  "project": "<project>",
+  "caps": { "maxAttempts": 3, "thrash": 2, "chunk": 6 },
+  "tickets": [
+    {
+      "id": "T001",
+      "title": "<one-line title>",
+      "status": "todo",
+      "depends_on": [],
+      "files": ["path/a.ts", "path/b.ts"],
+      "origin": "spec §X.Y | decomposed from T0NN | repair: gate red after <ids>",
+      "context": "Everything a cold subagent needs and nothing it doesn't: which spec sections govern this (quote the binding constraints); which locked decisions apply (cite oracle.md); what already exists (which prior tickets built what it depends on); the precise deliverable — build only this.",
+      "acceptance": "The ticket-local oracle — checkable, not vibes; ON TOP OF the baseline gate in oracle.md. Prefer input→output contrast checks over artifact-existence checks (existence is the most gameable). Add tests for new behavior (skip only for pure scaffold/config).\n- `<command>` exits 0\n- <behavioral check with expected result>",
+      "attempts": [
+        {
+          "n": 0,
+          "failed": "<example entry — delete me> which checks failed",
+          "hypothesis": "why, grounded in the spec/oracle",
+          "fixNote": "the targeted instruction given on re-dispatch"
+        }
+      ],
+      "evidence": null
+    }
+  ]
+}
