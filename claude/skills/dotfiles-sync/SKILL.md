@@ -14,7 +14,7 @@ Optional argument pins the intent:
 
 ## Context
 
-- Repo: `~/dotfiles`, branch `main`, remote `origin` (GitHub, HTTPS — assume public: the secrets gate below is mandatory).
+- Repo: `~/dotfiles`, branch `main`, remote `origin` (GitHub over SSH — repo is public: the secrets gate below is mandatory).
 - `~/.claude/skills` symlinks to `claude/skills/` inside this repo, so this skill syncs itself and its sibling skills. A pull can change skills available to the *running* session — always report skill changes.
 
 ## Procedure
