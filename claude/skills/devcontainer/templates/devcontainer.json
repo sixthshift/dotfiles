@@ -1,0 +1,41 @@
+{
+  "name": "{{PROJECT_TITLE}} Dev Container",
+  "dockerComposeFile": "docker-compose.dev.yml",
+  "service": "dev",
+  "workspaceFolder": "/workspace",
+
+  "containerEnv": {
+    "ENABLE_LSP_TOOLS": "1",
+    "CLAUDE_CONFIG_DIR": "/root/.claude",
+    "IS_SANDBOX": "1"
+  },
+
+  "customizations": {
+    "vscode": {
+      "extensions": ["biomejs.biome", "oven.bun-vscode", "ms-azuretools.vscode-docker", "mhutchie.git-graph", "bradlc.vscode-tailwindcss"],
+      "settings": {
+        "dev.containers.dockerCredentialHelper": false,
+        "editor.defaultFormatter": "biomejs.biome",
+        "editor.formatOnSave": true,
+        "editor.codeActionsOnSave": {
+          "source.organizeImports.biome": "explicit",
+          "quickfix.biome": "explicit"
+        },
+        "typescript.tsdk": "node_modules/typescript/lib",
+        "typescript.enablePromptUseWorkspaceTsdk": true,
+        "terminal.integrated.defaultProfile.linux": "bash"
+      }
+    }
+  },
+
+  "forwardPorts": [3000, 5173, 4983],
+  "portsAttributes": {
+    "3000": { "label": "{{API_LABEL}}", "onAutoForward": "notify" },
+    "5173": { "label": "Vite Dev Server", "onAutoForward": "notify" },
+    "4983": { "label": "Drizzle Studio", "onAutoForward": "silent" }
+  },
+
+  "postCreateCommand": "if [ -f package.json ]; then bun install; else echo 'No package.json yet — skipping bun install'; fi",
+
+  "remoteUser": "root"
+}

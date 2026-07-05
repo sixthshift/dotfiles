@@ -1,0 +1,100 @@
+# Scaffolded by the `devcontainer` skill.
+#
+# MERGE PATTERN: if the project has a root docker-compose.yml that already
+# defines a `db`, this file is an overlay (devcontainer.json lists both files);
+# drop the db block below and instead re-publish the host port with:
+#   db:
+#     ports: !override
+#       - '{{HOST_DB_PORT}}:5432'
+services:
+  dev:
+    container_name: {{PROJECT}}-dev
+    build:
+      context: ..
+      dockerfile: .devcontainer/Dockerfile
+    volumes:
+      - ..:/workspace:cached
+      # Keep node_modules in a container-private volume so the host (macOS)
+      # and this Debian container don't fight over one bind-mounted dir:
+      # native binaries are platform-specific, and `bun install` only
+      # materializes the current platform's. postCreateCommand repopulates it.
+      - {{PROJECT}}-node-modules:/workspace/node_modules
+      - claude-config:/root/.claude
+      # Commit identity + signing config. SSH keys are deliberately NOT
+      # mounted — git auth uses SSH agent forwarding (VS Code forwards
+      # SSH_AUTH_SOCK automatically when ssh-agent runs on the host).
+      - ~/.gitconfig:/root/.gitconfig:ro
+    env_file:
+      # Path is relative to the project dir (the first compose file's
+      # directory when the devcontainer merges files), not this file.
+      - .devcontainer/.env
+    environment:
+      - NODE_ENV=development
+      - TZ=Australia/Sydney
+      # {{IF_POSTGRES}}
+      - DATABASE_URL=postgres://{{PROJECT}}:{{PROJECT}}@db:5432/{{PROJECT}}
+      # {{END_IF_POSTGRES}}
+      # {{IF_DIND}}
+      - DOCKER_HOST=tcp://docker:2375
+      # {{END_IF_DIND}}
+    ports:
+      - '3000:3000' # {{API_LABEL}}
+      - '5173:5173' # Vite dev server
+    command: sleep infinity
+    working_dir: /workspace
+    # {{IF_POSTGRES}}
+    depends_on:
+      db:
+        condition: service_healthy
+    # {{END_IF_POSTGRES}}
+
+  # {{IF_POSTGRES}}
+  db:
+    image: postgres:18-alpine
+    container_name: {{PROJECT}}-postgres
+    environment:
+      POSTGRES_USER: {{PROJECT}}
+      POSTGRES_PASSWORD: {{PROJECT}}
+      POSTGRES_DB: {{PROJECT}}
+    volumes:
+      - postgres-data:/var/lib/postgresql
+    ports:
+      # Host-side publish from the skill's port registry (5432 = personal-assistant,
+      # 5433 = rostr, ...). In-container connections use db:5432.
+      - '{{HOST_DB_PORT}}:5432'
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U {{PROJECT}} -d {{PROJECT}}']
+      interval: 5s
+      timeout: 3s
+      retries: 5
+    restart: unless-stopped
+  # {{END_IF_POSTGRES}}
+
+  # {{IF_DIND}}
+  # Isolated Docker daemon for testcontainers. The dev container reaches it
+  # only via DOCKER_HOST — never the host daemon, so containers created here
+  # (and any bind mounts they request) are confined to this sidecar.
+  docker:
+    image: docker:28-dind
+    container_name: {{PROJECT}}-dind
+    privileged: true
+    environment:
+      DOCKER_TLS_CERTDIR: ''
+    volumes:
+      - dind-storage:/var/lib/docker
+    restart: unless-stopped
+  # {{END_IF_DIND}}
+
+volumes:
+  {{PROJECT}}-node-modules:
+    driver: local
+  claude-config:
+    driver: local
+  # {{IF_POSTGRES}}
+  postgres-data:
+    driver: local
+  # {{END_IF_POSTGRES}}
+  # {{IF_DIND}}
+  dind-storage:
+    driver: local
+  # {{END_IF_DIND}}
