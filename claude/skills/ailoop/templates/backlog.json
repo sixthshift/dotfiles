@@ -11,7 +11,7 @@
     "evidence holds the INDEPENDENT re-verify's output, not the builder's claim."
   ],
   "project": "<project>",
-  "caps": { "maxAttempts": 3, "thrash": 2, "chunk": 6 },
+  "caps": { "maxAttempts": 3, "thrash": 2, "chunk": 20 },
   "tickets": [
     {
       "id": "T001",

@@ -3,7 +3,7 @@ name: ailoop
 description: >-
   Drive a locked build spec to completion through an autonomous, self-terminating
   engineering loop, run in chunks: each invocation intakes (first run) or resumes
-  from .ailoop/ state, drives up to the chunk cap of tickets (default 6), and
+  from .ailoop/ state, drives up to the chunk cap of tickets (default 20), and
   stops with a chunk report the human glances over before re-invoking with a
   fresh context. You act as the judging COORDINATOR: extract an executable
   oracle from the spec, drive each chunk with deterministic Workflow bodies
@@ -41,7 +41,7 @@ collapse them into one.
   self-contained tickets — from the spec, and from then on the loop *is* "pull
   the next ready ticket, dispatch it, verify it, update the backlog." See
   **The backlog** below; it is the center of this skill.
-- **Runs are chunked.** One invocation drives up to `chunk` tickets (default 6)
+- **Runs are chunked.** One invocation drives up to `chunk` tickets (default 20)
   and ends with a chunk report — a deliberate human checkpoint. The next
   invocation starts with a **fresh context** and resumes purely from the
   `.ailoop/` files. Anything worth surviving the gap must be written to them —
@@ -135,7 +135,7 @@ coordinator's in-context knowledge:
 ```jsonc
 {
   "project": "<name>",
-  "caps": { "maxAttempts": 3, "thrash": 2, "chunk": 6 },
+  "caps": { "maxAttempts": 3, "thrash": 2, "chunk": 20 },
   "tickets": [
     {
       "id": "T017",
@@ -345,7 +345,7 @@ human sees it and the drive runs unattended after.
 6. **Set the caps.** In `backlog.json`'s `caps`: per-ticket max attempts
    (default 3), thrash threshold (a ticket's failing set doesn't shrink across
    2 attempts → escalate), and the chunk cap (tickets per invocation, default
-   6). Snapshot them in the ledger run header.
+   20). Snapshot them in the ledger run header.
 
 Report the intake to the user as a short pre-flight: the phase→oracle map, the
 seeded backlog (ticket count + the first few ready tickets + the dependency
@@ -550,7 +550,7 @@ judge decision.
 
 ## Scope of this skill
 
-- **Runs are chunked by design.** Default 6 tickets per invocation, a quick
+- **Runs are chunked by design.** Default 20 tickets per invocation, a quick
   human look between runs, fresh context each time. The `.ailoop/` files are
   the only memory across invocations.
 - **No token budgeting.** The main loop has no spend gauge, so a token cap

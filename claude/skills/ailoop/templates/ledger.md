@@ -8,7 +8,7 @@ done). Newest entry at the bottom. Never rewrite history; append corrections.
 ## Run header
 - **spec:** <path> @ <commit/hash if any>
 - **started:** <timestamp>
-- **caps:** max 3 attempts/ticket · thrash=2 · chunk=6/invocation
+- **caps:** max 3 attempts/ticket · thrash=2 · chunk=20/invocation
 
 ## Journal
 
