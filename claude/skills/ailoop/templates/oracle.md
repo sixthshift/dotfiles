@@ -1,5 +1,9 @@
 # Oracle — <project>
 
+**Contract:** `<spec path>` · spec_version <n> · sha256 `<hash>`
+<!-- Recorded at intake. Resume recomputes the hash and refuses to dispatch on
+     a mismatch — a changed spec is a change order to reconcile, never silent. -->
+
 The definition of done. Written at intake, before any build. Workers cite it;
 the coordinator gates against it. If a phase's checks below are not executable
 as written, the loop must **not** start — ask the human to supply the missing

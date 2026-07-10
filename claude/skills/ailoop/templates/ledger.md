@@ -7,7 +7,7 @@ audit trail — distinct from `backlog.json` (forward state) and `oracle.md`
 corrections.
 
 ## Run header
-- **spec:** <path> @ <commit/hash if any>
+- **spec:** <path> · spec_version <n> · sha256 <hash>
 - **started:** <timestamp>
 - **caps:** max 3 attempts/ticket · thrash=2 · chunk=20 dispatches/invocation
 

@@ -326,7 +326,10 @@ human sees it and the drive runs unattended after.
 0. **Locate the spec.** Use the path the user gave. Otherwise look for a locked
    build spec in the repo root or `docs/` (`spec.md`, `SPEC.md`, `PLAN.md`, or
    similar). If none exists, or several plausible candidates do, **stop and ask**
-   — do not guess which document is the contract. Also detect the project's own
+   — do not guess which document is the contract. A spec authored by the
+   `aispec` skill carries `status:` frontmatter: `locked` is a contract;
+   **`draft` is a refuse-to-start** — send the human back to `/aispec` to
+   finish it. Also detect the project's own
    toolchain (type-check / test / build commands, package manager) from its
    manifest; the oracle's checks must use *this* project's commands, not
    assumed ones.
@@ -349,9 +352,13 @@ human sees it and the drive runs unattended after.
      kind — e.g. "given these 3 contrasting inputs, the output must differ in
      *this* way"). Write it as a runnable harness, not a vibe.
 
-   Also record the **baseline gate** in `oracle.md` — the type-check / build /
+   Also record in `oracle.md`: the **baseline gate** — the type-check / build /
    lint / full-test-suite commands (from Stage 1.0's toolchain detection) that
-   *every* ticket must pass regardless of what it touches (see **Verification**).
+   *every* ticket must pass regardless of what it touches (see **Verification**)
+   — and the **contract identity**: the spec's path, its `spec_version` (if the
+   frontmatter has one), and its sha256 content hash (`shasum -a 256`). Resume
+   verifies this identity before every run; it is what makes a mid-drive spec
+   change detectable instead of silent.
 
 3. **The refuse-to-start gate.** Stop and ask the human if either:
    - a phase's oracle is not executable **as written** (hand-wavy / no runnable
@@ -580,6 +587,14 @@ A run ends one of three ways:
 `.ailoop/` exists → skip intake entirely. Read `oracle.md`, the ledger tail,
 and run the scheduler. Reconcile before dispatching:
 
+- **Contract changed** — recompute the spec's sha256 and compare it to the
+  contract identity in `oracle.md`. Mismatch → the spec changed since intake
+  (read its Change orders section to see what and why): **stop before any
+  dispatch** and reconcile with the human. A change to *what behavior counts
+  as done* goes through the semantic amendment tier; a structural change may
+  need affected backlog tickets reseeded. Never resume silently against a
+  changed contract — the loop would drive the old spec to green with every
+  guard satisfied.
 - **Stale `in-progress`** (a previous run ended mid-ticket): don't guess what
   happened. Workers build on branches, so look for the ticket's worker branch
   (`git branch --list` / `git worktree list`). Branch exists → independently
