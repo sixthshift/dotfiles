@@ -31,6 +31,7 @@ link() {
 # Symlink individual items (not the whole ~/.claude dir) so runtime state
 # (history.jsonl, sessions/, projects/, plugins/) is preserved.
 link "claude/CLAUDE.md"      "$HOME/.claude/CLAUDE.md"
+link "claude/CODING-VOICE.md" "$HOME/.claude/CODING-VOICE.md"
 link "claude/skills"         "$HOME/.claude/skills"
 link "claude/agents"         "$HOME/.claude/agents"
 link "claude/hooks"          "$HOME/.claude/hooks"

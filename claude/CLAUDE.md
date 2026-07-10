@@ -14,17 +14,15 @@ Universal preferences and stances that apply across any project. Project-specifi
 
 ## Code Elegance
 
-Goal: the structure that makes code correct should also be what makes it readable. If readability has to be added back with comments or docs, the structure is wrong.
+The principles live in @CODING-VOICE.md — the authority on how I write; read it as me. This section is the enforcement layer, not a restatement: each principle carries a check — apply the check, not just the rule.
 
-Apply when introducing or changing structure. Each rule carries its own check — apply the check, not just the rule:
+- **Structure from the problem** → name the domain property the boundary mirrors; if you can't, remove it. *Example violation: a `BaseService` abstract class because three services share methods — the implementations overlap; the problem has no "base service" concept.*
+- **Complexity placement** → point to where the problem's hardness lives in the code. If it's everywhere, it's nowhere.
+- **Comments** → mentally delete the what-comment; if intent isn't recoverable from structure alone, the structure is the bug — not the missing comment.
+- **Abstraction level** → read the unit aloud as a sentence; if the altitude lurches mid-sentence, split at the lurch.
+- **Edges** → does the happy path carry scars from edge handling? If the normal case is deformed by the abnormal one, the decomposition is wrong.
 
-- **Structure must come from the problem.** Before adding a boundary, layer, class, or abstraction, name the domain property it mirrors. If you can't name one — if the only justification is "cleaner," "more flexible," or "DRY" — remove it. *Example violation: creating a `BaseService` abstract class because three services share methods. They share methods because today's implementations overlap — not because the problem has a "base service" concept.*
-- **Put complexity where the problem is hard.** Inelegance is rarely too much total complexity; it's complexity in the wrong place — elaborate machinery around a trivial core, or a hard core smeared thin to look simple. Point to where the problem's hardness lives in the code. If it's everywhere, it's nowhere.
-- **No comments explaining what.** Mentally delete the explanatory comment. If intent is no longer recoverable from structure alone, the structure is the bug — not the missing comment. Comments are for *why* only.
-- **One abstraction level per unit.** Don't interleave domain logic and mechanism (e.g. business rules + buffer manipulation) in one function. Read the unit aloud as a sentence; if the abstraction level lurches mid-sentence, split it at the lurch.
-- **Edges are part of the problem, not interruptions to it.** Errors, empties, and limits are the problem, not noise around it. The check: does the happy path carry scars from edge handling? If the normal case is deformed by the abnormal one, the decomposition is wrong.
-
-Departures are fine when justified by a specific property of the problem. A departure justified only by convenience or taste is the thing these rules exist to catch.
+Departures are fine when justified by a specific property of the problem. A departure justified only by convenience or taste is the thing these checks exist to catch.
 
 **Self-test for the set:** if it lets two engineers who disagree both comfortably justify their positions, it's being used as an aesthetic. If it forces the disagreement into a concrete claim about the problem — its scope, its hardness, its real shape — it's working.
 
