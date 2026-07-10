@@ -190,6 +190,26 @@ the human, don't infer:
   feature 1 got; routing it through change orders on a dead contract gives it
   none.
 
+  Before scaffolding the new spec, run the **graduation pass** over the
+  archived one. Inheritance is never spec-to-spec — the archive is a record,
+  not a source — and every line of a finished spec has exactly one of three
+  destinations:
+  1. **Consumed by the build** (decisions the code + tests now enforce —
+     hashing choices, TTLs, response shapes) → leave it behind; the
+     regression suite defends it, and re-deciding it is a fresh fork in the
+     new spec.
+  2. **Still binding on future work** (stack, data model, "never do X" as
+     permanent policy — anything constraining work that doesn't exist yet)
+     → promote to the repo's durable docs (CLAUDE.md, docs/) if not already
+     there; the new spec **cites** it as standing, never restates it.
+  3. **Campaign-relative** (phases and ordering, done-means checks — already
+     graduated into the test suite — this drive's out-of-scope tripwire,
+     change orders) → dies in the archive as history.
+  Then scaffold the new spec pre-seeded with the standing constraints
+  (cited) and an "already exists" context read from reality — the code,
+  the tests, the drained backlog's done tickets — never from the old
+  spec's prose.
+
 A locked spec with an ailoop drive in flight has a backlog and an oracle
 derived from it; editing it in place is how the loop and the contract diverge
 with nobody noticing. On any post-lock change request:

@@ -14,7 +14,9 @@ spec_version: 1          # bumped by change orders after lock
      re-litigate gets decided here — stack, data model, architecture, naming,
      error behavior, "do not add X" lists. aispec locks conventional defaults
      loudly and lists them for override; the human decides the genuine forks.
-     ailoop copies this block into oracle.md verbatim; workers cite it. -->
+     Standing constraints inherited from previous drives are CITED from the
+     repo's durable docs, never restated. ailoop copies this block into
+     oracle.md verbatim; workers cite it. -->
 
 - Stack: ...
 - Data model: ...
