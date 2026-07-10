@@ -1,14 +1,15 @@
 # Ledger — <project>
 
-Append-only journal. How the loop got where it is: every judge decision and why,
-attempt counts, budget spent, decompositions, drift flags, escalations. The audit
-trail — distinct from `backlog.md` (forward state) and `oracle.md` (definition of
-done). Newest entry at the bottom. Never rewrite history; append corrections.
+Append-only journal. How the loop got where it is: every dispatch, every judge
+decision and why, attempt counts, decompositions, drift flags, escalations. The
+audit trail — distinct from `backlog.json` (forward state) and `oracle.md`
+(definition of done). Newest entry at the bottom. Never rewrite history; append
+corrections.
 
 ## Run header
 - **spec:** <path> @ <commit/hash if any>
 - **started:** <timestamp>
-- **caps:** max 3 attempts/ticket · thrash=2 · chunk=20/invocation
+- **caps:** max 3 attempts/ticket · thrash=2 · chunk=20 dispatches/invocation
 
 ## Journal
 
@@ -20,8 +21,10 @@ done). Newest entry at the bottom. Never rewrite history; append corrections.
   attempt: <n/max>
   evidence: <link or inline check output for done/gate/amend events>
 
-Chunk boundaries, oracle amendments (mechanical only — cite evidence), red-team
-findings, gate-red bisections, and gaming judgments all get entries.
+Every worker dispatch gets an entry (the chunk cap counts dispatches — the
+ledger is the auditable count). Chunk boundaries, oracle amendments (mechanical
+only — cite evidence), red-team findings, gate-red bisections, and gaming
+judgments all get entries.
 -->
 
 [0001] intake — seeded backlog (N tickets), oracle derived, acceptance red-teamed

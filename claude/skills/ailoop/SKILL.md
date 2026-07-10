@@ -3,9 +3,9 @@ name: ailoop
 description: >-
   Drive a locked build spec to completion through an autonomous, self-terminating
   engineering loop, run in chunks: each invocation intakes (first run) or resumes
-  from .ailoop/ state, drives up to the chunk cap of tickets (default 20), and
-  stops with a chunk report the human glances over before re-invoking with a
-  fresh context. You act as the judging COORDINATOR: extract an executable
+  from .ailoop/ state, drives up to the chunk cap of worker dispatches (default
+  20), and stops with a chunk report the human glances over before re-invoking
+  with a fresh context. You act as the judging COORDINATOR: extract an executable
   oracle from the spec, drive each chunk with deterministic Workflow bodies
   (parallel worker agents in git worktrees → merge → re-gate), judge results,
   and stop only when the oracle is green or the loop is genuinely stuck. Use
@@ -41,7 +41,8 @@ collapse them into one.
   self-contained tickets — from the spec, and from then on the loop *is* "pull
   the next ready ticket, dispatch it, verify it, update the backlog." See
   **The backlog** below; it is the center of this skill.
-- **Runs are chunked.** One invocation drives up to `chunk` tickets (default 20)
+- **Runs are chunked.** One invocation drives up to `chunk` worker dispatches
+  (default 20 — every builder session counts: each batch member and each retry)
   and ends with a chunk report — a deliberate human checkpoint. The next
   invocation starts with a **fresh context** and resumes purely from the
   `.ailoop/` files. Anything worth surviving the gap must be written to them —
@@ -74,9 +75,9 @@ checkpoint.
    (baseline + acceptance + scope check + gaming read), not the builder's
    self-report, is what counts; per phase, only a **merged-tree** oracle result
    counts (per-worktree green is not integration-green). See **Verification**.
-3. **Stop before you thrash.** Hard caps on attempts per ticket and on tickets
-   per invocation (the chunk). Escalate with a diagnosis rather than grinding a
-   wall; end a chunk healthy rather than stretching a run.
+3. **Stop before you thrash.** Hard caps on attempts per ticket and on worker
+   dispatches per invocation (the chunk). Escalate with a diagnosis rather than
+   grinding a wall; end a chunk healthy rather than stretching a run.
 4. **Stay in scope.** The spec's out-of-scope list is a tripwire, not a
    suggestion. If a phase's output crosses it, halt and report.
 5. **Every ticket is cold-start runnable.** A ticket a fresh subagent can't
@@ -84,10 +85,10 @@ checkpoint.
    or decompose it before dispatch — never hand a worker a ticket that leans on
    context only you hold. This includes failure history: a retried ticket
    carries its own `attempts` log.
-6. **Judgment never does arithmetic.** Ready sets, fan-out batches, cap
-   breaches, cycles — deterministic graph work with one right answer — come
-   from the scheduler script, never from you eyeballing the backlog. Your
-   judgment starts where its output ends.
+6. **Judgment never does arithmetic.** Ready sets, fan-out batches, cap and
+   thrash breaches, cycles, phase drain, completion — deterministic graph work
+   with one right answer — come from the scheduler script, never from you
+   eyeballing the backlog. Your judgment starts where its output ends.
 
 ---
 
@@ -121,11 +122,14 @@ Every loop turn starts with:
 node .ailoop/schedule.mjs
 ```
 
-It prints: dangling/duplicate dependencies, dependency cycles, the ready set,
-file-disjoint fan-out batches (manifest/lockfiles excluded — they're allowlisted
-for every ticket), attempt-cap breaches, and stale `in-progress` tickets. You
-judge what the output *means* — whether a ready ticket is truly fit to
-dispatch, which batch first — never *what it is*.
+It prints: structural problems (dangling/duplicate dependencies, dependents
+stranded on `decomposed` tickets, tickets with no declared `files`), dependency
+cycles, the ready set, file-disjoint fan-out batches (manifest/lockfiles
+excluded — they're allowlisted for every ticket), attempt-cap **and thrash**
+breaches (both computed from the `attempts` log), per-phase drain state, a
+`complete` flag, and stale `in-progress` tickets. You judge what the output
+*means* — whether a ready ticket is truly fit to dispatch, which batch first —
+never *what it is*.
 
 ### Ticket schema
 
@@ -135,20 +139,23 @@ coordinator's in-context knowledge:
 ```jsonc
 {
   "project": "<name>",
-  "caps": { "maxAttempts": 3, "thrash": 2, "chunk": 20 },
+  "caps": { "maxAttempts": 3, "thrash": 2, "chunk": 20 },  // chunk = worker DISPATCHES per invocation
   "tickets": [
     {
       "id": "T017",
       "title": "Add POST /session login endpoint",
       "status": "todo",        // todo | in-progress | done | blocked | decomposed
                                // "ready" is COMPUTED by the scheduler, never stored
+      "phase": "P2",           // the spec phase this ticket closes toward — the
+                               // scheduler reports per-phase drain from it
       "depends_on": ["T003", "T009"],
-      "files": ["src/server/auth.ts", "src/server/routes.ts"],
+      "files": ["src/server/auth.ts", "src/server/routes.ts"],  // NON-EMPTY, always
       "origin": "spec §4.2",   // or "decomposed from T0NN" or "repair: gate red after T012+T014"
       "context": "Spec §4.2 defines the request/response shape; §4.5 the token rules (frozen). Locked (cite oracle.md): bcrypt hashing, 15-min token TTL. Already exists: User model (T003), db access layer (T009). Build ONLY this endpoint: validate credentials, issue a session token.",
       "acceptance": "- <project type-check command> passes\n- POST /session with valid creds → 200 + token; with bad creds → 401",
       "attempts": [],          // durable diagnosis log — see below
-      "evidence": null         // filled on completion: the INDEPENDENT re-verify's output
+      "evidence": null         // filled on completion: a POINTER into .ailoop/evidence/
+                               // to the INDEPENDENT re-verify's output — never inline
     }
   ]
 }
@@ -159,7 +166,10 @@ coordinator's in-context knowledge:
   worktrees; overlapping `files` → serialize. The `files` declaration is a
   **contract, not an honor system** — the independent verifier diffs the branch
   and fails any ticket that touched undeclared files (manifest/lockfiles
-  excepted; any ticket may add a dependency).
+  excepted; any ticket may add a dependency). It must be **non-empty**: an
+  empty declaration means unknown footprint — unbatchable and unverifiable —
+  and the scheduler rejects it as a problem. Declare the expected paths or
+  decompose until you can.
 - **`context`** must let a subagent that has never seen this conversation
   succeed. If you can't write it self-contained, the ticket is too big or too
   vague — decompose or sharpen it.
@@ -168,11 +178,14 @@ coordinator's in-context knowledge:
   clears (see **Verification**). Prefer input→output contrast checks over
   artifact-existence checks — existence is the most gameable form.
 - **`attempts`** is the durable diagnosis log — one entry per failed attempt:
-  `{ "n": 1, "failed": "<which checks>", "hypothesis": "<why>", "fixNote":
-  "<instruction given on re-dispatch>" }`. It exists because chunked runs mean
-  a re-dispatch may happen in a session that never saw the failure: the ticket
+  `{ "n": 1, "failed": ["<check name>", ...], "hypothesis": "<why>", "fixNote":
+  "<instruction given on re-dispatch>" }`. `failed` is an **array of check
+  names**, not prose — the scheduler compares consecutive attempts' failing
+  sets to detect thrash mechanically; freeform text there would put that
+  arithmetic back on you. The log exists because chunked runs mean a
+  re-dispatch may happen in a session that never saw the failure: the ticket
   carries its own failure history the way it carries its own context. Thrash
-  detection reads this log, not your memory.
+  detection reads this log via the scheduler, never your memory.
 
 ### Decomposition (the anti-rot move)
 
@@ -185,13 +198,29 @@ Splitting happens at two moments:
    (with dependencies) onto the backlog, and continue. Never let a worker grind
    a too-big ticket to context exhaustion.
 
+Every decomposition follows the same bookkeeping, or the graph silently rots:
+- **Rewire the parent's dependents.** A `decomposed` ticket never becomes
+  `done`, so any ticket still depending on it is stranded forever. Point each
+  dependent at the child(ren) that actually deliver what it needs. The
+  scheduler flags stranded edges as problems, but fix them at decomposition
+  time, not when the alarm fires.
+- **Children inherit the parent's `phase`** — phase drain is computed from it.
+- **Red-team the children's fresh `acceptance`** the same way intake acceptance
+  was red-teamed (Stage 1.5). Mid-flight tickets — decomposed children and
+  repair tickets — are the only ones that would otherwise skip that pass, and
+  they're born precisely where something already went sideways. Ledger the pass.
+
 ### Rules
 
 - New tickets are **appended and ordered by dependency**, not by whim. Record
   why a ticket exists in `origin` (spec section, parent it decomposed from, or
   the gate failure it repairs).
 - A ticket is `done` only when the independent re-verify passed *and*
-  `evidence` holds the re-verify's actual output.
+  `evidence` points at the re-verify's actual output, written to
+  `.ailoop/evidence/<id>.txt` (failed-attempt output at `<id>-a<n>.txt` when
+  worth keeping). Never inline captured output into `backlog.json` — the
+  scheduler and every resume re-read that file; bulk there taxes every turn of
+  the loop.
 - The backlog is append-mostly: don't delete tickets, mark them `done` /
   `decomposed`. The history is part of the audit trail.
 
@@ -213,6 +242,11 @@ builder's self-report alone — confirms three things:
      it is how a ticket that breaks a previously-green one is caught
      *immediately*, not at phase close.
    Detect the exact commands from the project's manifest at intake (Stage 1.0).
+   Cost note: the **builder** may scope the full-test-suite step to the tests
+   its change affects — the **independent verifier always runs the full
+   suite**, and that authoritative run is what counts. Never scope the
+   verifier or the phase gate; as the suite grows, this is where the loop's
+   compute goes, and it is the one place it must.
 2. **Ticket acceptance.** The ticket's own behavioral checks (its `acceptance`
    field), with captured output as evidence.
 3. **New tests for new behavior.** A ticket that adds behavior must add tests
@@ -229,12 +263,15 @@ dispatch, you re-run it yourself. The re-verify is more than re-running the
 builder's commands:
 
 - **Re-run baseline + acceptance** (mechanical: exit codes and captured output,
-  not the builder's transcript).
-- **Scope check (mechanical).** `git diff --name-only` from the branch's
-  merge-base: every touched path must be in the ticket's declared `files` or
-  the manifest allowlist (`package.json` + lockfiles — any ticket may add a
-  dependency). An undeclared touch **fails the ticket** with the overflow
-  listed. This is what lets the parallelism scheduler trust `files`.
+  not the builder's transcript). The verifier runs the full suite even where
+  the builder scoped it.
+- **Scope check (mechanical).** `git diff --name-only <baseSha>..<branch>`,
+  where `baseSha` is the fork point you captured (`git rev-parse HEAD`)
+  immediately before dispatch — the verifier is handed the SHA, never left to
+  guess a merge-base. Every touched path must be in the ticket's declared
+  `files` or the manifest allowlist (`package.json` + lockfiles — any ticket
+  may add a dependency). An undeclared touch **fails the ticket** with the
+  overflow listed. This is what lets the parallelism scheduler trust `files`.
 - **Gaming read (judgment).** Read the diff and ask: was the acceptance
   satisfied by implementing the intent, or by gaming the check — hardcoded
   outputs, weakened or deleted tests, special-cased inputs? Suspicion doesn't
@@ -281,8 +318,9 @@ honest. "Frozen" means never *silently* changed — not never changed:
 
 Do this once, on the first invocation only (see **Resume** for every run
 after). Produce `.ailoop/oracle.md`, `.ailoop/backlog.json`, and
-`.ailoop/ledger.md` (templates in `templates/`), and copy
-`templates/schedule.mjs` → `.ailoop/schedule.mjs`. This is the pre-flight; the
+`.ailoop/ledger.md` (templates in `templates/`), copy
+`templates/schedule.mjs` → `.ailoop/schedule.mjs`, and create
+`.ailoop/evidence/` for captured check output. This is the pre-flight; the
 human sees it and the drive runs unattended after.
 
 0. **Locate the spec.** Use the path the user gave. Otherwise look for a locked
@@ -328,11 +366,18 @@ human sees it and the drive runs unattended after.
 
 4. **Seed the backlog.** Turn each phase into tickets in `.ailoop/backlog.json`,
    each sized to one focused subagent session and written cold-start runnable
-   (full schema above). Wire `depends_on` so the graph encodes the spec's
+   (full schema above), each tagged with its `phase` and a **non-empty**
+   `files` declaration. Wire `depends_on` so the graph encodes the spec's
    de-risk order — the riskiest phase's tickets come first and downstream
    tickets depend on them. Err small; you will decompose further mid-flight
    anyway. Do **not** try to enumerate every ticket for late phases perfectly —
    seed them coarsely and refine as earlier tickets teach you the shape.
+
+   Then write the **coverage map** into `oracle.md`: every requirement/section
+   of the spec → the ticket(s) or oracle check that delivers it. A requirement
+   with no entry gets a ticket now or an explicit "deferred" line — silence in
+   this map is how an under-derived intake finishes an incomplete build with
+   every check green. Update the map as tickets decompose.
 
 5. **Red-team the acceptance.** Before any build spend, an adversarial pass
    over every seeded ticket (fan out a few cheap agents, one per phase's
@@ -344,8 +389,10 @@ human sees it and the drive runs unattended after.
 
 6. **Set the caps.** In `backlog.json`'s `caps`: per-ticket max attempts
    (default 3), thrash threshold (a ticket's failing set doesn't shrink across
-   2 attempts → escalate), and the chunk cap (tickets per invocation, default
-   20). Snapshot them in the ledger run header.
+   2 attempts → escalate; the scheduler computes this from the `attempts`
+   log), and the chunk cap (worker **dispatches** per invocation — every
+   builder session counts, batch members and retries alike; default 20).
+   Snapshot them in the ledger run header.
 
 Report the intake to the user as a short pre-flight: the phase→oracle map, the
 seeded backlog (ticket count + the first few ready tickets + the dependency
@@ -360,13 +407,23 @@ Work off the backlog. One turn of the loop:
 
 ### 2.1 Pull ready tickets
 Run `node .ailoop/schedule.mjs` and read its output — never compute readiness,
-batches, or breaches by eye (Prime directive 6):
+batches, breaches, thrash, phase drain, or completion by eye (Prime
+directive 6):
 - `problems` or `cycles` non-empty → fix the graph if it's your bookkeeping
-  error (ledger entry), else escalate.
+  error (ledger entry), else escalate. Problems include dependents stranded on
+  a `decomposed` ticket (rewire the edge to its children) and tickets with no
+  declared `files` (declare the footprint or decompose).
 - `staleInProgress` non-empty → reconcile first (see **Resume**).
-- `capBreaches` non-empty → those tickets are walls; escalate them (see 2.4).
-- `ready` empty while `todo` tickets remain → blocked graph → escalate.
-- `ready` empty and nothing `todo` → done (go to Termination).
+- `capBreaches` or `thrashBreaches` non-empty → those tickets are walls;
+  escalate them (see 2.4).
+- `phasesDrained` names a phase whose oracle hasn't run yet (check the ledger)
+  → run that phase's oracle on the merged tree before dispatching onward.
+- `complete: true` (no `todo`, `in-progress`, **or `blocked`** tickets remain)
+  → done (go to Termination).
+- `ready` empty while `complete` is false → nothing is dispatchable but live
+  work remains — a blocked graph, unresolved `blocked` tickets, or walls.
+  Resolve what you can (requeue an unblocked ticket, fix an edge) or escalate.
+  **Never report done over live `blocked` tickets.**
 - Otherwise: `batches[0]` is the next fan-out set (file-disjoint by
   construction). Tickets in later batches wait; after each judged result,
   re-run the scheduler.
@@ -382,18 +439,29 @@ the Verify stage, the integrator, the phase-oracle gate, and you the coordinator
 against is the reverse: a cheap judge rubber-stamping expensive (or cheap)
 workers costs loop iterations; never downgrade the gate.
 
-- **Single ticket** → one `Agent` subagent (`model: 'sonnet'`). Its prompt is
-  the ticket's `context` + `acceptance` + the baseline gate + the frozen locked
+- **Single ticket** → one `Agent` subagent (`model: 'sonnet'`,
+  `isolation: 'worktree'`) — **never on the main working tree**: an
+  interrupted worker must leave a branch to reconcile, not a dirty tree, and
+  the scope check needs a defined diff base. Capture `baseSha`
+  (`git rev-parse HEAD`) immediately before dispatch. The prompt is the
+  ticket's `context` + `acceptance` + the baseline gate + the frozen locked
   decisions + the declared `files` (touch only those, plus manifest/lockfile
   for dependencies) + **the full `attempts` log if this is a retry** — a fresh
-  session must never re-diagnose from scratch. It must build, add tests for new
-  behavior, then run baseline + acceptance and return the captured output. Then
-  **you re-verify** (baseline + acceptance + scope check + gaming read) before
-  accepting — its self-report is only a claim.
-- **A disjoint batch** → the `build-phase` Workflow (see the template): one
-  worker `agent()` per ticket, each `isolation: 'worktree'`, then a per-ticket
-  **Verify** stage on each worktree, then **merge** the verified ones, then gate
-  on the merged tree.
+  session must never re-diagnose from scratch. It must build, add tests for
+  new behavior, run baseline + acceptance (it may scope the full-suite step to
+  affected tests), and report its **branch** with the captured output. Then
+  **you re-verify on that branch** (full baseline + acceptance + scope check
+  via `git diff --name-only <baseSha>..<branch>` + gaming read) before
+  accepting — its self-report is only a claim. On accept, merge the branch
+  into the mainline; if the mainline moved past `baseSha` since the fork,
+  re-run the baseline on the merged tree — that is the integration gate a
+  batch run would have given you.
+- **A disjoint batch** → the `build-phase` Workflow (see the template),
+  passing `baseSha` (`git rev-parse HEAD` at invocation) alongside the
+  tickets, frozen decisions, baseline, and phase oracle: one worker `agent()`
+  per ticket, each `isolation: 'worktree'`, a per-ticket **Verify** stage
+  pipelined behind each build, then **merge** the verified ones, then gate on
+  the merged tree (skipped when nothing merged — `oracle: null`).
 
 Every worker is instructed to return one of:
 - `{ done: true, branch, evidence }` — built it, **added tests for new
@@ -409,7 +477,8 @@ Wait for the `<task-notification>`. Never assume a worker succeeded.
 The judgment the inner body cannot do:
 - **`done` + independent re-verify green** (baseline + acceptance pass, no
   out-of-scope files, no credible gaming suspicion) **+ in scope** → mark the
-  ticket `done`, store the **re-verify** evidence on the ticket, update the
+  ticket `done`, write the **re-verify** evidence to
+  `.ailoop/evidence/<id>.txt` and store the pointer on the ticket, update the
   backlog. This may unblock downstream tickets.
 - **re-verify red** — acceptance failed, the ticket **regressed the baseline**,
   OR it **touched undeclared files** → the ticket failed. Diagnose *why* using
@@ -422,9 +491,11 @@ The judgment the inner body cannot do:
   `attempts`) **and** sharpen the acceptance that was gamed (escaped-bug rule).
   Clean → accept and note why in the ledger.
 - **`tooBig`** → mark the parent `decomposed`, push the proposed child tickets
-  onto the backlog with dependencies, refine their `context`/`acceptance` so
-  each is cold-start runnable, continue. This is expected and healthy, not a
-  failure.
+  onto the backlog with dependencies, and do the decomposition bookkeeping
+  (see **Decomposition**): rewire the parent's dependents onto the children,
+  give children the parent's `phase`, refine their `context`/`acceptance` so
+  each is cold-start runnable, and red-team the fresh acceptance. This is
+  expected and healthy, not a failure.
 - **`blocked`** → if the missing dependency is a ticket you can order, add/fix
   the edge and requeue. If it's a genuine spec contradiction, escalate.
 - **Merge conflicts** (batch) → manifest conflicts are mechanical: take the
@@ -441,26 +512,37 @@ The judgment the inner body cannot do:
   **repair ticket** whose `context` carries the implicated tickets' evidence
   and the gate output, with `depends_on` on them and `origin: "repair: gate red
   after <ids>"`. The escaped-bug rule applies: the repair ticket also
-  strengthens whichever acceptance let the interaction slip.
+  strengthens whichever acceptance let the interaction slip — and its own
+  fresh acceptance gets red-teamed before dispatch, like any mid-flight ticket.
 - **Scope tripwire hit** → halt, report; do not "fix" it by building more.
 
-After integrating a batch or a phase's worth of tickets, run that **phase's
-oracle** from `oracle.md` on the merged tree — the ticket-local checks are
-necessary but the phase oracle is what actually closes a phase.
+When the scheduler's `phasesDrained` shows a phase with no live tickets left —
+never your own tally of the backlog — run that **phase's oracle** from
+`oracle.md` on the merged tree: the ticket-local checks are necessary but the
+phase oracle is what actually closes a phase. Until it is green, **keep the
+phase's worker branches** — a gate-red bisection needs them intact. Once it is
+green, prune: delete the merged worker branches and `git worktree prune`
+(ledger the phase close).
 
 ### 2.4 Enforce the caps
-**Before every re-dispatch** (per ticket, from the `attempts` log — never from
-memory):
-- attempts ≥ `maxAttempts`, **or**
+**Before every re-dispatch** (per ticket, read from the scheduler's
+`capBreaches` and `thrashBreaches` — never from memory or an eyeballed diff of
+failure notes):
+- attempts ≥ `maxAttempts` (`capBreaches`), **or**
 - the failing set hasn't shrunk across `thrash` consecutive attempts
+  (`thrashBreaches`)
 → **stop and escalate**: the ticket, its last re-verify result, your best
 diagnosis of the wall (the `attempts` log writes this report for you), and the
 specific human decision you need. Do not loop again on that wall.
 
 **Before every new dispatch:**
-- tickets closed this invocation ≥ `chunk` → **end the chunk healthy**: finish
-  judging anything already dispatched (never abandon in-flight work), write the
-  chunk report, stop. A chunk end is a checkpoint, not an escalation.
+- worker dispatches this invocation ≥ `chunk` (every builder session counts —
+  each batch member and each retry; verify/gate agents don't) → **end the
+  chunk healthy**: finish judging anything already dispatched (never abandon
+  in-flight work), write the chunk report, stop. A chunk end is a checkpoint,
+  not an escalation. A batch that would overshoot the cap is trimmed to fit —
+  the remainder stays ready for the next chunk. Ledger each dispatch as it
+  happens so the count is auditable, not remembered.
 
 Then loop back to 2.1.
 
@@ -470,14 +552,21 @@ Then loop back to 2.1.
 
 A run ends one of three ways:
 
-1. **Chunk cap reached** → a **chunk report**: tickets closed this run (with
-   evidence pointers), decompositions and repair tickets spawned, current
-   phase-oracle state, what the scheduler says is ready next, and "invoke
-   `/ailoop` to continue." This is the healthy steady state.
-2. **Backlog drained and every phase oracle green** → the **final report**:
+1. **Chunk cap reached** → a **chunk report**: tickets closed and dispatches
+   spent this run (with evidence pointers), decompositions and repair tickets
+   spawned, current phase-oracle state, what the scheduler says is ready next,
+   and "invoke `/ailoop` to continue." This is the healthy steady state.
+2. **Backlog drained (`complete: true`) and every phase oracle green** → run
+   the **coverage pass** before writing the final report: re-read the spec
+   against `oracle.md`'s coverage map — every requirement must point at a
+   `done` ticket or a green check, or sit explicitly under Cut / deferred. An
+   unmapped requirement means the build is **not** done, whatever the backlog
+   says: seed the missing tickets and keep driving. Then the **final report**:
    - **Shipped:** what was built, keyed by phase / ticket.
    - **Oracle evidence:** the passing check output per phase (the proof, not
      your say-so).
+   - **Coverage:** the spec→delivery map, every requirement resolved as
+     shipped or explicitly deferred.
    - **Backlog history:** tickets completed, decomposed, repaired — the shape
      of the work, honestly.
    - **Cut / deferred:** anything the spec deferred or you consciously left out.
@@ -492,9 +581,11 @@ A run ends one of three ways:
 and run the scheduler. Reconcile before dispatching:
 
 - **Stale `in-progress`** (a previous run ended mid-ticket): don't guess what
-  happened. Independently re-verify the ticket against the current tree — if
-  green, judge it like any worker result; if red, reset it to `todo` and append
-  an `attempts` entry noting the interrupted run.
+  happened. Workers build on branches, so look for the ticket's worker branch
+  (`git branch --list` / `git worktree list`). Branch exists → independently
+  re-verify it like any worker result (green → judge, merge; red → reset to
+  `todo` with an `attempts` entry noting the interrupted run). No branch →
+  nothing durable happened; reset to `todo`.
 - **Legacy markdown backlog** (`backlog.md` from an older version of this
   skill): convert it to `backlog.json` once, preserving all tickets and history
   verbatim; ledger entry.
@@ -505,54 +596,70 @@ more into the ticket/ledger *this* run, not to try to remember harder.
 
 ---
 
-## Durable state — three files + one script, four jobs
+## Durable state — the `.ailoop/` directory
 
-All under `.ailoop/`. Trust these files over your recollection; they are what
-survives context compaction and the gap between chunked runs.
+Trust these files over your recollection; they are what survives context
+compaction and the gap between chunked runs.
 
 - **`backlog.json`** — the **forward** state and the loop driver: the ticket
-  queue with status, dependencies, and per-ticket `attempts` diagnosis logs.
-  "Where is the loop?" is answered by the scheduler, never by memory.
+  queue with status, phase, dependencies, and per-ticket `attempts` diagnosis
+  logs. "Where is the loop?" is answered by the scheduler, never by memory.
+  Bulk never lives here — captured output goes to `evidence/`.
 - **`schedule.mjs`** — the deterministic scheduler (copied from templates at
-  intake). Ready sets, batches, breaches — computed, never eyeballed.
+  intake). Ready sets, batches, cap/thrash breaches, phase drain, completion —
+  computed, never eyeballed.
 - **`oracle.md`** — the **definition of done**: locked decisions, the scope
-  tripwire list, the baseline gate, and the executable per-phase checks.
-  Written at intake; amendable only per the amendment tiers (mechanical =
-  self-serve + ledger entry; semantic = escalate); workers cite it; you gate
-  against it.
-- **`ledger.md`** — the append-only **journal**: every judge decision and why,
-  oracle amendments, red-team findings, decompositions, drift flags,
-  escalations, chunk boundaries. The audit trail — how the loop got where it is.
+  tripwire list, the baseline gate, the executable per-phase checks, and the
+  spec→delivery coverage map. Written at intake; amendable only per the
+  amendment tiers (mechanical = self-serve + ledger entry; semantic =
+  escalate); workers cite it; you gate against it.
+- **`ledger.md`** — the append-only **journal**: every dispatch, every judge
+  decision and why, oracle amendments, red-team findings, decompositions,
+  drift flags, escalations, chunk boundaries. The audit trail — how the loop
+  got where it is.
+- **`evidence/`** — captured check output, one file per re-verify
+  (`T017.txt`; failed-attempt logs `T017-a2.txt`). Tickets and the ledger hold
+  pointers into it; `backlog.json` stays lean.
 
 Update `backlog.json` after every ticket outcome and `ledger.md` after every
 judge decision.
 
 ## Guards checklist (re-read before each dispatch)
 
-- [ ] Ready set / batches / breaches came from `schedule.mjs` output — not from
-      eyeballing the backlog.
+- [ ] Ready set / batches / breaches / thrash / phase drain / completion came
+      from `schedule.mjs` output — not from eyeballing the backlog.
 - [ ] The ticket is cold-start runnable (self-contained `context`; full
-      `attempts` log included on retries).
-- [ ] Its `acceptance` is executable (not vibes) and was red-teamed at intake.
-- [ ] Worker ran the baseline (type-check/build/lint/full test suite) + acceptance.
-- [ ] New behavior has new tests, green under the baseline.
-- [ ] **Independent re-verify** passed: checks green, touched files ⊆ declared
-      ∪ manifest allowlist, diff read for gaming — and no baseline regression.
+      `attempts` log included on retries) with a non-empty `files` declaration
+      and a `phase` tag.
+- [ ] Its `acceptance` is executable (not vibes) and was red-teamed — at intake
+      for seeded tickets, at creation for decomposed children and repairs.
+- [ ] Decomposed parents: dependents rewired onto the children.
+- [ ] Worker dispatched into a worktree with `baseSha` captured; ledgered as a
+      dispatch.
+- [ ] Worker ran the baseline (full-suite step may be scoped to affected
+      tests) + acceptance; new behavior has new tests, green under the baseline.
+- [ ] **Independent re-verify** passed: FULL baseline + acceptance green,
+      touched files (diffed from `baseSha`) ⊆ declared ∪ manifest allowlist,
+      diff read for gaming — and no baseline regression.
+- [ ] Evidence written to `.ailoop/evidence/` and pointed at — never inlined
+      into `backlog.json`.
 - [ ] Workers cite locked decisions; none re-litigated.
-- [ ] Only merged-tree checks count as green; phase oracle run before closing a phase.
+- [ ] Only merged-tree checks count as green; phase oracle run when the
+      scheduler says the phase drained; branches kept until it's green, pruned
+      after.
 - [ ] Gate red after a clean merge → bisect + repair ticket; never patch the
       tree yourself.
 - [ ] Oracle changed only via the amendment tiers, each with a ledger entry.
-- [ ] Attempt/thrash caps checked from the `attempts` log before every
-      re-dispatch; chunk cap checked before every new dispatch.
+- [ ] Attempt/thrash breaches read from the scheduler before every re-dispatch;
+      dispatch count vs. `chunk` checked before every new dispatch.
 - [ ] Nothing built crosses the out-of-scope list.
-- [ ] `backlog.json` and `ledger.md` updated.
+- [ ] `backlog.json` and `ledger.md` updated; coverage map current.
 
 ## Scope of this skill
 
-- **Runs are chunked by design.** Default 20 tickets per invocation, a quick
-  human look between runs, fresh context each time. The `.ailoop/` files are
-  the only memory across invocations.
+- **Runs are chunked by design.** Default 20 worker dispatches per invocation,
+  a quick human look between runs, fresh context each time. The `.ailoop/`
+  files are the only memory across invocations.
 - **No token budgeting.** The main loop has no spend gauge, so a token cap
   would be enforced by guesswork — and fictional numbers in the audit trail are
   worse than no cap. The real guards are attempts, thrash, and the chunk cap;

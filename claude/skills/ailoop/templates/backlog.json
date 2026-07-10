@@ -1,14 +1,20 @@
 {
   "$doc": [
-    "The loop's driver — machine-readable on purpose: readiness, batches, and",
-    "cap breaches are computed by schedule.mjs, never by eye. Append-mostly:",
-    "never delete a ticket; mark it done or decomposed.",
+    "The loop's driver — machine-readable on purpose: readiness, batches, cap and",
+    "thrash breaches, phase drain, and completion are computed by schedule.mjs,",
+    "never by eye. Append-mostly: never delete a ticket; mark it done or decomposed.",
     "status: todo | in-progress | done | blocked | decomposed ('ready' is computed).",
-    "files is a CONTRACT: the verifier diffs the branch and fails undeclared",
-    "touches (package.json + lockfiles allowlisted for every ticket).",
-    "attempts is the durable diagnosis log — one entry per failed attempt, so a",
-    "retry in a fresh session never re-diagnoses from scratch.",
-    "evidence holds the INDEPENDENT re-verify's output, not the builder's claim."
+    "phase ties the ticket to its spec phase — the scheduler reports drain from it;",
+    "decomposed children inherit the parent's phase.",
+    "files is a CONTRACT and must be NON-EMPTY: the verifier diffs the branch from",
+    "its recorded fork point (baseSha) and fails undeclared touches (package.json +",
+    "lockfiles allowlisted for every ticket); the scheduler rejects empty files.",
+    "attempts is the durable diagnosis log — one entry per failed attempt; failed is",
+    "an ARRAY of check names so the scheduler detects thrash mechanically.",
+    "evidence is a POINTER into .ailoop/evidence/ — never inline captured output;",
+    "this file is re-read every loop turn.",
+    "caps.chunk counts worker DISPATCHES per invocation (batch members and retries",
+    "alike), not tickets closed."
   ],
   "project": "<project>",
   "caps": { "maxAttempts": 3, "thrash": 2, "chunk": 20 },
@@ -17,6 +23,7 @@
       "id": "T001",
       "title": "<one-line title>",
       "status": "todo",
+      "phase": "P0",
       "depends_on": [],
       "files": ["path/a.ts", "path/b.ts"],
       "origin": "spec §X.Y | decomposed from T0NN | repair: gate red after <ids>",
@@ -25,7 +32,7 @@
       "attempts": [
         {
           "n": 0,
-          "failed": "<example entry — delete me> which checks failed",
+          "failed": ["<example entry — delete me>", "<failing check names, one per element>"],
           "hypothesis": "why, grounded in the spec/oracle",
           "fixNote": "the targeted instruction given on re-dispatch"
         }

@@ -50,7 +50,22 @@ closes only when all its checks pass **on the merged tree**.
 ### Phase 1 — <name>
 - [ ] ...
 
+## Coverage map (spec → delivery)
+
+<!-- Every requirement/section of the spec → the ticket(s) or oracle check that
+     delivers it. Filled at intake (Stage 1.4), updated as tickets decompose.
+     A requirement with no entry gets a ticket or an explicit "deferred" line —
+     silence here is how an incomplete build finishes with every check green.
+     The final report re-checks the spec against this map before declaring done. -->
+
+| Spec § | Requirement (one line) | Delivered by |
+|---|---|---|
+| §1.1 | ... | T001, T002 |
+| §5.2 | ... | phase 1 oracle check 3 |
+| §9 | ... | deferred — spec marks it v2 |
+
 ## Caps
 
 Live in `backlog.json` (`caps`, read by the scheduler): maxAttempts 3 · thrash 2
-· chunk 20 tickets/invocation. Snapshot recorded in the ledger run header.
+· chunk 20 worker dispatches/invocation. Snapshot recorded in the ledger run
+header.

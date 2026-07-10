@@ -3,9 +3,9 @@ export const meta = {
   description: 'Build a file-disjoint batch of ailoop tickets in parallel worktrees, independently verify each (checks + scope + gaming read), integrate the verified ones, and gate on the phase oracle',
   phases: [
     { title: 'Build', detail: 'one worker per ticket in its own git worktree', model: 'sonnet' },
-    { title: 'Verify', detail: 'independent agent re-runs baseline + acceptance, diffs for undeclared files, reads the diff for gaming' },
+    { title: 'Verify', detail: 'independent agent re-runs the FULL baseline + acceptance, diffs against the fork point for undeclared files, reads the diff for gaming' },
     { title: 'Integrate', detail: 'merge only the verified worker branches; manifest conflicts resolved mechanically' },
-    { title: 'Gate', detail: 'run the phase oracle on the merged tree' },
+    { title: 'Gate', detail: 'run the phase oracle on the merged tree (skipped when nothing merged)' },
   ],
 }
 
@@ -15,12 +15,15 @@ export const meta = {
 // itself) — no fan-out.
 //
 // args: {
-//   tickets: [{ id, title, context, acceptance, files: [], attempts: [] }],  // file-DISJOINT, all ready
+//   tickets: [{ id, title, context, acceptance, files: [], attempts: [] }],  // file-DISJOINT, all ready, files NON-EMPTY
+//   baseSha: string,           // `git rev-parse HEAD`, captured by the coordinator IMMEDIATELY
+//                              // before invoking: the commit the worktrees fork from and the
+//                              // scope check's diff base — the verifier never guesses a merge-base
 //   lockedDecisions: string,   // frozen decisions block from oracle.md, verbatim
 //   baseline: string,          // the baseline gate: type-check/build/lint/full-test-suite commands
 //   phaseOracle: string,       // the phase's executable checks from oracle.md
 // }
-const { tickets, lockedDecisions, baseline, phaseOracle } = args
+const { tickets, baseSha, lockedDecisions, baseline, phaseOracle } = args
 
 const MANIFEST_ALLOWLIST =
   'package.json, package-lock.json, bun.lock, bun.lockb, yarn.lock, pnpm-lock.yaml'
@@ -102,14 +105,17 @@ const ORACLE_RESULT = {
   required: ['passed', 'failing', 'evidence'],
 }
 
-// ── Build ────────────────────────────────────────────────────────────────
-// One worker per ticket, each in its own worktree so parallel file writes
-// cannot collide. Workers add tests for new behavior and run the FULL gate
-// (baseline + acceptance) themselves — but their result is only a claim; the
-// Verify stage below is what actually counts.
+// ── Build → Verify (pipelined) ───────────────────────────────────────────
+// pipeline, not a barrier: each ticket's independent verify starts the moment
+// its own build finishes — fast tickets never wait for the batch's slowest
+// build. Workers run in isolated worktrees so parallel file writes cannot
+// collide; they add tests for new behavior and run the gate themselves — but
+// their result is only a claim; the Verify stage is what counts.
 phase('Build')
-const built = await parallel(tickets.map(t => () =>
-  agent(
+const results = (await pipeline(
+  tickets,
+
+  t => agent(
     [
       'You are building ONE ticket inside an isolated git worktree. Build ONLY this ticket.',
       `Touch ONLY the DECLARED FILES below — plus the manifest allowlist (${MANIFEST_ALLOWLIST})`,
@@ -120,7 +126,7 @@ const built = await parallel(tickets.map(t => () =>
       lockedDecisions,
       '',
       `TICKET ${t.id} — ${t.title}`,
-      `DECLARED FILES: ${(t.files ?? []).join(', ') || '(none declared)'}`,
+      `DECLARED FILES: ${(t.files ?? []).join(', ')}`,
       'CONTEXT:',
       t.context,
       ...(t.attempts?.length ? [
@@ -137,7 +143,9 @@ const built = await parallel(tickets.map(t => () =>
       '',
       'Do, in order: (1) build only this ticket; (2) add tests covering the new',
       'behavior (skip only for pure scaffold/config with nothing to test — say so);',
-      '(3) run the BASELINE and the ACCEPTANCE; capture their real output.',
+      "(3) run the BASELINE — you may scope its full-test-suite step to the tests",
+      'your change affects; the independent verifier runs the full suite — and the',
+      'ACCEPTANCE; capture their real output.',
       '',
       'Return exactly one shape:',
       '- { done:true, branch:"<your worktree branch>", evidence } when baseline AND',
@@ -150,29 +158,25 @@ const built = await parallel(tickets.map(t => () =>
     // Workers run Sonnet: the locked spec + ticket constrain them, and the
     // independent Verify stage catches what they get wrong. Gates never downgrade.
     { label: `build:${t.id}`, phase: 'Build', isolation: 'worktree', schema: BUILD_RESULT, model: 'sonnet' }
-  ).then(result => ({ ticket: t, result }))
-))
+  ).then(result => ({ ticket: t, result })),
 
-const done = built.filter(b => b.result && b.result.done)
-const notDone = built.filter(b => !b.result || !b.result.done) // tooBig / blocked → bubble up to coordinator
-
-// ── Verify ───────────────────────────────────────────────────────────────
-// Independent re-verify per ticket: a DIFFERENT agent re-runs baseline +
-// acceptance on the worker's branch, diffs it for undeclared touches, and reads
-// the diff for gaming. The builder's self-report does not count — this does.
-// Verify/Integrate/Gate inherit the session model (no `model` override): a cheap
-// judge rubber-stamping cheap workers is the failure mode the split exists to avoid.
-phase('Verify')
-const checked = await parallel(done.map(b => () =>
-  agent(
+  // Independent re-verify per ticket: a DIFFERENT agent re-runs the FULL
+  // baseline + acceptance on the worker's branch, diffs it against baseSha for
+  // undeclared touches, and reads the diff for gaming. The builder's
+  // self-report does not count — this does. No `model` override: gates never
+  // downgrade (a cheap judge rubber-stamping cheap workers is the failure mode
+  // the tiering exists to avoid). tooBig/blocked/dead builds skip straight
+  // through to the partition below.
+  b => !b.result?.done ? b : agent(
     [
       'You are an INDEPENDENT verifier. You did not build this — do not trust the',
       "builder's report. Check out the branch below in a fresh worktree, then:",
       '',
-      '(1) RE-RUN the BASELINE and the ACCEPTANCE yourself; capture real output.',
-      '    Exit codes decide pass/fail — not the builder\'s transcript.',
-      '(2) SCOPE CHECK: `git diff --name-only <merge-base>..<branch>` (merge-base',
-      '    against the branch it forked from). Every touched path must be in the',
+      '(1) RE-RUN the BASELINE — the FULL test suite, even if the builder scoped',
+      '    it — and the ACCEPTANCE yourself; capture real output. Exit codes',
+      "    decide pass/fail — not the builder's transcript.",
+      `(2) SCOPE CHECK: \`git diff --name-only ${baseSha}..<branch>\` — that SHA is`,
+      '    the commit this batch forked from. Every touched path must be in the',
       `    DECLARED FILES or the manifest allowlist (${MANIFEST_ALLOWLIST}).`,
       '    List every violation in outOfScopeFiles.',
       '(3) GAMING READ: read the diff. Was the acceptance satisfied by implementing',
@@ -184,9 +188,9 @@ const checked = await parallel(done.map(b => () =>
       '',
       `TICKET ${b.ticket.id} — ${b.ticket.title}`,
       `BRANCH: ${b.result.branch || '(discover via git worktree list / git branch — the worktree for this ticket)'}`,
-      `DECLARED FILES: ${(b.ticket.files ?? []).join(', ') || '(none declared)'}`,
+      `DECLARED FILES: ${(b.ticket.files ?? []).join(', ')}`,
       '',
-      'BASELINE (must pass):',
+      'BASELINE (must pass, full suite):',
       baseline,
       '',
       'ACCEPTANCE (must pass):',
@@ -198,13 +202,14 @@ const checked = await parallel(done.map(b => () =>
     ].join('\n'),
     { label: `verify:${b.ticket.id}`, phase: 'Verify', schema: VERIFY_RESULT }
   ).then(v => ({ ...b, verify: v }))
-))
+)).filter(Boolean) // a stage that threw drops its ticket to null
 
+const notDone = results.filter(b => !b.result?.done) // tooBig / blocked / dead worker → coordinator
+const verifyFailed = results.filter(b => b.result?.done && !b.verify?.verified) // re-dispatch by coordinator
 // Gaming suspicion does not auto-fail, but a suspect is held OUT of integration:
 // the coordinator reads the diff and judges before it can merge (SKILL.md 2.3).
-const passed = checked.filter(b => b.verify?.verified && !b.verify.suspectedGaming)
-const suspected = checked.filter(b => b.verify?.verified && b.verify.suspectedGaming)
-const verifyFailed = checked.filter(b => !b.verify || !b.verify.verified) // re-dispatch by coordinator
+const suspected = results.filter(b => b.verify?.verified && b.verify.suspectedGaming)
+const passed = results.filter(b => b.verify?.verified && !b.verify.suspectedGaming)
 
 // ── Integrate ────────────────────────────────────────────────────────────
 // Merge ONLY independently-verified, unsuspected branches. Workflow scripts have
@@ -212,7 +217,7 @@ const verifyFailed = checked.filter(b => !b.verify || !b.verify.verified) // re-
 phase('Integrate')
 const merge = passed.length === 0
   ? { merged: [], conflicts: [] }
-  : await agent(
+  : (await agent(
       [
         'Integrate the VERIFIED ticket branches into the current working branch.',
         `Verified tickets to merge: ${passed.map(b => b.ticket.id).join(', ')}`,
@@ -222,18 +227,22 @@ const merge = passed.length === 0
         "and REGENERATE the lockfile with the project's install command — never",
         'hand-merge a lockfile. Beyond that, resolve only trivial/obvious conflicts.',
         'Do NOT invent code to resolve a non-trivial conflict — report it.',
+        'Do NOT delete the merged branches — the coordinator prunes them only after',
+        'the phase oracle is green (a gate-red bisection needs them intact).',
         'Return { merged:[ids], conflicts:[{ticket, files, detail}] }.',
       ].join('\n'),
       { label: 'integrate', phase: 'Integrate', schema: MERGE_RESULT }
-    )
+    )) ?? { merged: [], conflicts: [{ ticket: '(batch)', detail: 'integrator agent died — merge state unknown; coordinator must inspect the tree' }] }
 
 // ── Gate ─────────────────────────────────────────────────────────────────
 // The phase oracle on the MERGED tree — the coarsest, final gate. Per-worktree
-// green does not count. This agent only runs checks and captures output.
-// If this comes back red after a clean merge, the coordinator bisects and
-// spawns a repair ticket (SKILL.md 2.3) — the workflow does not improvise.
+// green does not count. Nothing merged → nothing new to gate: oracle stays
+// null and the coordinator knows phase state is unchanged. This agent only
+// runs checks and captures output. If it comes back red after a clean merge,
+// the coordinator bisects and spawns a repair ticket (SKILL.md 2.3) — the
+// workflow does not improvise.
 phase('Gate')
-const oracle = await agent(
+const oracle = merge.merged.length === 0 ? null : await agent(
   [
     'Run the phase oracle on the current (merged) working tree. Run each check,',
     'capture its real output, and report. Fix NOTHING — you only measure.',
@@ -247,10 +256,10 @@ const oracle = await agent(
 )
 
 return {
-  built: built.map(b => ({ id: b.ticket.id, result: b.result })),
-  notDone: notDone.map(b => ({ id: b.ticket.id, result: b.result })),          // tooBig / blocked
+  built: results.map(b => ({ id: b.ticket.id, result: b.result })),
+  notDone: notDone.map(b => ({ id: b.ticket.id, result: b.result })),          // tooBig / blocked / dead worker
   verifyFailed: verifyFailed.map(b => ({ id: b.ticket.id, verify: b.verify })), // built but failed independent re-verify (incl. out-of-scope touches)
   suspectedGaming: suspected.map(b => ({ id: b.ticket.id, branch: b.result.branch, verify: b.verify })), // checks green but diff looks gamed — coordinator judges before these may merge
   merge,
-  oracle,
+  oracle, // null when nothing merged (phase state unchanged)
 }
