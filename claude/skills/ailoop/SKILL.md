@@ -480,6 +480,23 @@ Every worker is instructed to return one of:
 
 Wait for the `<task-notification>`. Never assume a worker succeeded.
 
+**The wait is work time.** While workers build, do the prep the loop needs
+anyway — none of it touches in-flight tickets, and like verify/gate agents it
+doesn't count against the chunk cap:
+- **Refine the next frontier.** Late-phase tickets were seeded coarsely on
+  purpose; sharpen the `context`/`acceptance` of tickets the in-flight batch is
+  about to unblock, using what finished tickets taught you.
+- **Red-team upcoming acceptance early.** Fan out the Stage 1.5-style
+  adversarial pass over soon-to-be-ready tickets now, not at dispatch time —
+  decomposed children and repair tickets especially, so their mandatory
+  red-team never sits on the critical path.
+- **Coverage map and ledger upkeep.**
+
+Write every result into the `.ailoop/` files as it lands — prep held only in
+context dies at the chunk boundary. Prefer cheap background agents over your
+own context for the fan-out parts; your context is the loop's scarcest
+resource.
+
 ### 2.3 Judge each result
 The judgment the inner body cannot do:
 - **`done` + independent re-verify green** (baseline + acceptance pass, no
@@ -490,7 +507,10 @@ The judgment the inner body cannot do:
 - **re-verify red** — acceptance failed, the ticket **regressed the baseline**,
   OR it **touched undeclared files** → the ticket failed. Diagnose *why* using
   the spec — many specs tell you where to look (e.g. "if the behavior doesn't
-  flip, the prompt is wrong, not the code"). Append an `attempts` entry
+  flip, the prompt is wrong, not the code"). Several failures in one batch →
+  fan out one diagnosis agent per failed ticket, in parallel; the diagnoses
+  are independent, and you judge their output — serializing them is pure
+  wall-clock waste. Append an `attempts` entry
   (`failed` / `hypothesis` / `fixNote`) to the ticket — the diagnosis must
   survive compaction and the chunk gap — then re-dispatch with the full log.
 - **Gaming suspicion** (verifier flagged the diff) → you read the diff and
@@ -515,7 +535,8 @@ The judgment the inner body cannot do:
   textually clean, and the combination is broken. No single ticket is at fault,
   so don't pick a scapegoat — and **don't patch the merged tree yourself**; you
   are the judge, not a builder. Attribute by bisection: run the failing checks
-  on base + each implicated branch alone (mechanical, cheap). Then spawn a
+  on base + each implicated branch alone — mechanical, cheap, and independent
+  per branch, so fan the runs out in parallel. Then spawn a
   **repair ticket** whose `context` carries the implicated tickets' evidence
   and the gate output, with `depends_on` on them and `origin: "repair: gate red
   after <ids>"`. The escaped-bug rule applies: the repair ticket also
