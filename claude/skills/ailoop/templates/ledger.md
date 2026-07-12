@@ -9,20 +9,20 @@ corrections.
 ## Run header
 - **spec:** <path> · spec_version <n> · sha256 <hash>
 - **started:** <timestamp>
-- **caps:** max 3 attempts/ticket · thrash=2 · chunk=20 dispatches/invocation
+- **caps:** max 3 attempts/ticket · thrash=2
 
 ## Journal
 
 <!-- One entry per event. Format:
 
 [<seq>] <ticket|phase|run> — <event>
-  decision: continue | retry | decompose | escalate | close-phase | amend-oracle | end-chunk
+  decision: continue | retry | decompose | escalate | close-phase | amend-oracle
   why: <one line grounded in the oracle or spec>
   attempt: <n/max>
   evidence: <link or inline check output for done/gate/amend events>
 
-Every worker dispatch gets an entry (the chunk cap counts dispatches — the
-ledger is the auditable count). Chunk boundaries, oracle amendments (mechanical
+Every worker dispatch gets an entry (the ledger is the auditable dispatch
+count). Oracle amendments (mechanical
 only — cite evidence), red-team findings, gate-red bisections, and gaming
 judgments all get entries.
 -->

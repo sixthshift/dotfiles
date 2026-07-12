@@ -70,6 +70,6 @@ closes only when all its checks pass **on the merged tree**.
 
 ## Caps
 
-Live in `backlog.json` (`caps`, read by the scheduler): maxAttempts 3 · thrash 2
-· chunk 20 worker dispatches/invocation. Snapshot recorded in the ledger run
-header.
+Live in `backlog.json` (`caps`, read by the scheduler): maxAttempts 3 · thrash 2.
+No cap on total dispatches — the run goes to completion. Snapshot recorded in
+the ledger run header.

@@ -12,12 +12,10 @@
     "attempts is the durable diagnosis log — one entry per failed attempt; failed is",
     "an ARRAY of check names so the scheduler detects thrash mechanically.",
     "evidence is a POINTER into .ailoop/evidence/ — never inline captured output;",
-    "this file is re-read every loop turn.",
-    "caps.chunk counts worker DISPATCHES per invocation (batch members and retries",
-    "alike), not tickets closed."
+    "this file is re-read every loop turn."
   ],
   "project": "<project>",
-  "caps": { "maxAttempts": 3, "thrash": 2, "chunk": 20 },
+  "caps": { "maxAttempts": 3, "thrash": 2 },
   "tickets": [
     {
       "id": "T001",

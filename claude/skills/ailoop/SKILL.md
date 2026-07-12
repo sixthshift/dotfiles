@@ -2,12 +2,12 @@
 name: ailoop
 description: >-
   Drive a locked build spec to completion through an autonomous, self-terminating
-  engineering loop, run in chunks: each invocation intakes (first run) or resumes
-  from .ailoop/ state, drives up to the chunk cap of worker dispatches (default
-  20), and stops with a chunk report the human glances over before re-invoking
-  with a fresh context. You act as the judging COORDINATOR: extract an executable
-  oracle from the spec, drive each chunk with deterministic Workflow bodies
-  (parallel worker agents in git worktrees → merge → re-gate), judge results,
+  engineering loop: one invocation intakes (first run) or resumes from .ailoop/
+  state and drives the backlog until every phase oracle is green — no dispatch
+  cap; hours-long, multi-phase runs are the intended shape. You act as the
+  judging COORDINATOR: extract an executable oracle from the spec, dispatch
+  deterministic Workflow bodies (parallel worker agents in git worktrees →
+  merge → re-gate), judge results,
   and stop only when the oracle is green or the loop is genuinely stuck. Use
   when the user wants to build out a defined spec end-to-end with minimal
   supervision — "run the loop", "autonomously build this spec", "drive this to
@@ -41,17 +41,19 @@ collapse them into one.
   self-contained tickets — from the spec, and from then on the loop *is* "pull
   the next ready ticket, dispatch it, verify it, update the backlog." See
   **The backlog** below; it is the center of this skill.
-- **Runs are chunked.** One invocation drives up to `chunk` worker dispatches
-  (default 20 — every builder session counts: each batch member and each retry)
-  and ends with a chunk report — a deliberate human checkpoint. The next
-  invocation starts with a **fresh context** and resumes purely from the
-  `.ailoop/` files. Anything worth surviving the gap must be written to them —
-  a fact held only in conversation is a fact the next run never had.
-- **You (the coordinator)** are the main loop executing this file. Within one
-  invocation you pull ready tickets, dispatch them (a single subagent, or a
+- **One invocation runs to completion.** There is no dispatch cap: the run
+  ends only when the backlog is drained and every phase oracle is green, or on
+  escalation. Hours-long runs spanning many phases are the intended shape —
+  never end a run early because it is long, the context was compacted, or many
+  dispatches have been spent. Context **will** be compacted mid-run; the
+  `.ailoop/` files, not the conversation, are the loop's memory. Anything worth
+  surviving compaction or an interruption must be written to them — a fact held
+  only in conversation is a fact the loop will eventually lose.
+- **You (the coordinator)** are the main loop executing this file. You pull
+  ready tickets, dispatch them (a single subagent, or a
   Workflow fanning out a batch of independent ones), wait for the
   `<task-notification>`, read the structured result, judge, update the backlog,
-  and pull the next — until the chunk cap is hit, the backlog is drained, or
+  and pull the next — until the backlog is drained or
   you must escalate.
 - **Each ticket is built by a fresh subagent.** One ticket = one cold subagent
   with no memory of this conversation. That is deliberate: it bounds context and
@@ -61,8 +63,8 @@ collapse them into one.
   worktree, then merge, then gate. Deterministic, backgrounded, resumable.
 
 You do **not** need the `loop` skill. `loop` is for interval/recurring
-re-invocation; ailoop's chunking is the human re-invoking `/ailoop` after each
-checkpoint.
+re-invocation; ailoop runs to completion in one invocation and is re-invoked
+only to resume after an interruption or a resolved escalation.
 
 ## Prime directives (non-negotiable)
 
@@ -75,9 +77,9 @@ checkpoint.
    (baseline + acceptance + scope check + gaming read), not the builder's
    self-report, is what counts; per phase, only a **merged-tree** oracle result
    counts (per-worktree green is not integration-green). See **Verification**.
-3. **Stop before you thrash.** Hard caps on attempts per ticket and on worker
-   dispatches per invocation (the chunk). Escalate with a diagnosis rather than
-   grinding a wall; end a chunk healthy rather than stretching a run.
+3. **Stop before you thrash.** Hard caps on attempts per ticket, thrash
+   detection across attempts. Escalate with a diagnosis rather than grinding a
+   wall. Length alone is never a reason to stop — a wall is.
 4. **Stay in scope.** The spec's out-of-scope list is a tripwire, not a
    suggestion. If a phase's output crosses it, halt and report.
 5. **Every ticket is cold-start runnable.** A ticket a fresh subagent can't
@@ -106,8 +108,8 @@ Why backlog-driven and not phase-driven:
 - Work is **decomposable on demand.** A ticket that turns out too big becomes
   several child tickets pushed back onto the backlog — so no single context ever
   rots trying to do too much. This is the primary defense against context rot.
-- The backlog is durable state. It survives compaction *and the gap between
-  chunked runs*: the loop's position is *"what does the scheduler say,"* not
+- The backlog is durable state. It survives compaction *and any interruption*:
+  the loop's position is *"what does the scheduler say,"* not
   your memory.
 
 ### The scheduler — never compute readiness by eye
@@ -139,7 +141,7 @@ coordinator's in-context knowledge:
 ```jsonc
 {
   "project": "<name>",
-  "caps": { "maxAttempts": 3, "thrash": 2, "chunk": 20 },  // chunk = worker DISPATCHES per invocation
+  "caps": { "maxAttempts": 3, "thrash": 2 },
   "tickets": [
     {
       "id": "T017",
@@ -182,8 +184,8 @@ coordinator's in-context knowledge:
   "<instruction given on re-dispatch>" }`. `failed` is an **array of check
   names**, not prose — the scheduler compares consecutive attempts' failing
   sets to detect thrash mechanically; freeform text there would put that
-  arithmetic back on you. The log exists because chunked runs mean a
-  re-dispatch may happen in a session that never saw the failure: the ticket
+  arithmetic back on you. The log exists because compaction and interruptions
+  mean a re-dispatch may happen in a context that never saw the failure: the ticket
   carries its own failure history the way it carries its own context. Thrash
   detection reads this log via the scheduler, never your memory.
 
@@ -316,8 +318,8 @@ honest. "Frozen" means never *silently* changed — not never changed:
 
 ## Stage 1 — Intake & Oracle Contract
 
-Do this once, on the first invocation only (see **Resume** for every run
-after). Produce `.ailoop/oracle.md`, `.ailoop/backlog.json`, and
+Do this once, on the first invocation only (see **Resume** for re-invocations
+after an interruption). Produce `.ailoop/oracle.md`, `.ailoop/backlog.json`, and
 `.ailoop/ledger.md` (templates in `templates/`), copy
 `templates/schedule.mjs` → `.ailoop/schedule.mjs`, and create
 `.ailoop/evidence/` for captured check output. This is the pre-flight; the
@@ -395,11 +397,10 @@ human sees it and the drive runs unattended after.
    existence is the most gameable form. Record the pass in the ledger.
 
 6. **Set the caps.** In `backlog.json`'s `caps`: per-ticket max attempts
-   (default 3), thrash threshold (a ticket's failing set doesn't shrink across
-   2 attempts → escalate; the scheduler computes this from the `attempts`
-   log), and the chunk cap (worker **dispatches** per invocation — every
-   builder session counts, batch members and retries alike; default 20).
-   Snapshot them in the ledger run header.
+   (default 3) and the thrash threshold (a ticket's failing set doesn't shrink
+   across 2 attempts → escalate; the scheduler computes this from the
+   `attempts` log). There is no cap on total dispatches — the run goes to
+   completion. Snapshot the caps in the ledger run header.
 
 Report the intake to the user as a short pre-flight: the phase→oracle map, the
 seeded backlog (ticket count + the first few ready tickets + the dependency
@@ -481,8 +482,7 @@ Every worker is instructed to return one of:
 Wait for the `<task-notification>`. Never assume a worker succeeded.
 
 **The wait is work time.** While workers build, do the prep the loop needs
-anyway — none of it touches in-flight tickets, and like verify/gate agents it
-doesn't count against the chunk cap:
+anyway — none of it touches in-flight tickets:
 - **Refine the next frontier.** Late-phase tickets were seeded coarsely on
   purpose; sharpen the `context`/`acceptance` of tickets the in-flight batch is
   about to unblock, using what finished tickets taught you.
@@ -493,7 +493,7 @@ doesn't count against the chunk cap:
 - **Coverage map and ledger upkeep.**
 
 Write every result into the `.ailoop/` files as it lands — prep held only in
-context dies at the chunk boundary. Prefer cheap background agents over your
+context dies at compaction. Prefer cheap background agents over your
 own context for the fan-out parts; your context is the loop's scarcest
 resource.
 
@@ -512,7 +512,7 @@ The judgment the inner body cannot do:
   are independent, and you judge their output — serializing them is pure
   wall-clock waste. Append an `attempts` entry
   (`failed` / `hypothesis` / `fixNote`) to the ticket — the diagnosis must
-  survive compaction and the chunk gap — then re-dispatch with the full log.
+  survive compaction — then re-dispatch with the full log.
 - **Gaming suspicion** (verifier flagged the diff) → you read the diff and
   judge against the spec's intent. Gamed → failed attempt (append to
   `attempts`) **and** sharpen the acceptance that was gamed (escaped-bug rule).
@@ -563,14 +563,9 @@ failure notes):
 diagnosis of the wall (the `attempts` log writes this report for you), and the
 specific human decision you need. Do not loop again on that wall.
 
-**Before every new dispatch:**
-- worker dispatches this invocation ≥ `chunk` (every builder session counts —
-  each batch member and each retry; verify/gate agents don't) → **end the
-  chunk healthy**: finish judging anything already dispatched (never abandon
-  in-flight work), write the chunk report, stop. A chunk end is a checkpoint,
-  not an escalation. A batch that would overshoot the cap is trimmed to fit —
-  the remainder stays ready for the next chunk. Ledger each dispatch as it
-  happens so the count is auditable, not remembered.
+There is no dispatch budget: ledger each dispatch as it happens (the audit
+trail, not a countdown) and keep driving. Only completion or a wall ends the
+run.
 
 Then loop back to 2.1.
 
@@ -578,13 +573,11 @@ Then loop back to 2.1.
 
 ## Termination & report
 
-A run ends one of three ways:
+A run ends one of two ways — length, compaction, or dispatches spent are never
+endings. (An *interrupted* run — killed session, crash — is not an ending
+either: the next invocation picks it up from `.ailoop/`; see **Resume**.)
 
-1. **Chunk cap reached** → a **chunk report**: tickets closed and dispatches
-   spent this run (with evidence pointers), decompositions and repair tickets
-   spawned, current phase-oracle state, what the scheduler says is ready next,
-   and "invoke `/ailoop` to continue." This is the healthy steady state.
-2. **Backlog drained (`complete: true`) and every phase oracle green** → run
+1. **Backlog drained (`complete: true`) and every phase oracle green** → run
    the **coverage pass** before writing the final report: re-read the spec
    against `oracle.md`'s coverage map — every requirement must point at a
    `done` ticket or a green check, or sit explicitly under Cut / deferred. An
@@ -600,12 +593,13 @@ A run ends one of three ways:
    - **Cut / deferred:** anything the spec deferred or you consciously left out.
    - **Drift caught:** scope tripwires, retries, gamed tickets, gate-red
      bisections, oracle amendments — plain, not smoothed over.
-3. **Escalation** → "stuck at ticket T, here's the wall and the decision I
+2. **Escalation** → "stuck at ticket T, here's the wall and the decision I
    need" — never a rosy summary of a loop that didn't finish.
 
-## Resume — every invocation after the first
+## Resume — after an interruption or a resolved escalation
 
-`.ailoop/` exists → skip intake entirely. Read `oracle.md`, the ledger tail,
+`.ailoop/` exists → a previous run already did intake; skip it entirely. Read
+`oracle.md`, the ledger tail,
 and run the scheduler. Reconcile before dispatching:
 
 - **Contract changed** — recompute the spec's sha256 and compare it to the
@@ -635,7 +629,7 @@ more into the ticket/ledger *this* run, not to try to remember harder.
 ## Durable state — the `.ailoop/` directory
 
 Trust these files over your recollection; they are what survives context
-compaction and the gap between chunked runs.
+compaction and an interrupted run.
 
 - **`backlog.json`** — the **forward** state and the loop driver: the ticket
   queue with status, phase, dependencies, and per-ticket `attempts` diagnosis
@@ -651,7 +645,7 @@ compaction and the gap between chunked runs.
   escalate); workers cite it; you gate against it.
 - **`ledger.md`** — the append-only **journal**: every dispatch, every judge
   decision and why, oracle amendments, red-team findings, decompositions,
-  drift flags, escalations, chunk boundaries. The audit trail — how the loop
+  drift flags, escalations. The audit trail — how the loop
   got where it is.
 - **`evidence/`** — captured check output, one file per re-verify
   (`T017.txt`; failed-attempt logs `T017-a2.txt`). Tickets and the ledger hold
@@ -686,22 +680,22 @@ judge decision.
 - [ ] Gate red after a clean merge → bisect + repair ticket; never patch the
       tree yourself.
 - [ ] Oracle changed only via the amendment tiers, each with a ledger entry.
-- [ ] Attempt/thrash breaches read from the scheduler before every re-dispatch;
-      dispatch count vs. `chunk` checked before every new dispatch.
+- [ ] Attempt/thrash breaches read from the scheduler before every re-dispatch.
 - [ ] Nothing built crosses the out-of-scope list.
 - [ ] `backlog.json` and `ledger.md` updated; coverage map current.
 
 ## Scope of this skill
 
-- **Runs are chunked by design.** Default 20 worker dispatches per invocation,
-  a quick human look between runs, fresh context each time. The `.ailoop/`
-  files are the only memory across invocations.
+- **One invocation, one run to done.** No dispatch cap and no mid-run
+  checkpoint: the run ends at completion or escalation, however many hours and
+  phases that takes. The `.ailoop/` files are the only memory across compaction
+  and interruptions.
 - **No token budgeting.** The main loop has no spend gauge, so a token cap
   would be enforced by guesswork — and fictional numbers in the audit trail are
-  worse than no cap. The real guards are attempts, thrash, and the chunk cap;
+  worse than no cap. The real guards are attempts and thrash;
   cost control is model tiering (Sonnet builders, session-model gates), not
   budget arithmetic.
-- **Fully autonomous within a chunk.** The only human touches in a healthy run
-  are the intake pre-flight, the glance between chunks, and the final report.
+- **Fully autonomous.** The only human touches in a healthy run
+  are the intake pre-flight and the final report.
   Everything else is escalation, which by definition means the loop couldn't
   proceed safely.
