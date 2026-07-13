@@ -31,15 +31,23 @@ let it through.
 
 ## Baseline gate (every ticket, no exceptions)
 
-<!-- The project's standing quality gate, from Stage 1.0 toolchain detection.
-     EVERY ticket must pass all of these regardless of what it touched — this is
-     also the regression guard. Use THIS project's real commands. -->
+<!-- The project's standing quality gate, from Stage 1.0 toolchain detection,
+     classified into tiers at intake. The FAST tier runs on every ticket's
+     verify; the GATE tier (slow suites — e2e, live-server, minutes-long) runs
+     on the merged tree at each phase close. A ticket shipping a NEW gate-tier
+     test still runs THAT test itself; a ticket changing behavior an EXISTING
+     gate-tier test pins re-runs that test by name. Use THIS project's real
+     commands. -->
 
+Fast tier (per ticket):
 - [ ] type-check / compile: `<command>` → exit 0
 - [ ] build: `<command>` → exit 0
 - [ ] lint (if the project lints): `<command>` → exit 0
-- [ ] full existing test suite: `<command>` → all pass
+- [ ] full unit-test suite: `<command>` → all pass
 - [ ] new behavior ships with new tests, green under the above
+
+Gate tier (per phase close, merged tree):
+- [ ] e2e / slow suites: `<command>` → all pass
 
 ## Per-phase acceptance (executable)
 

@@ -4,7 +4,7 @@
 // eye; it runs this and judges only what the output MEANS. Dependency-free;
 // Node >= 18.
 // Usage: node .ailoop/schedule.mjs [path-to-backlog.json]
-import { readFileSync } from 'node:fs'
+import { readFileSync, existsSync } from 'node:fs'
 
 // Allowlisted for every ticket (dependency adds) and excluded from the
 // disjointness key — integration resolves them mechanically (union
@@ -41,6 +41,17 @@ for (const t of tickets) {
   // key) and unverifiable (the scope check would fail every touch).
   if (!TERMINAL.has(t.status) && (t.files ?? []).length === 0)
     problems.push(`${t.id} declares no files — declare its footprint or decompose it`)
+}
+
+// Declared paths absent from disk. Not automatically a problem — a ticket may
+// legitimately CREATE files — but an edit-intended path that's missing is the
+// guessed-home footprint miss that costs a dispatch. The coordinator confirms
+// each one is an intentional create before dispatching (SKILL.md 2.1).
+const missingFiles = {}
+for (const t of tickets) {
+  if (TERMINAL.has(t.status)) continue
+  const missing = (t.files ?? []).filter(f => !existsSync(f))
+  if (missing.length) missingFiles[t.id] = missing
 }
 
 const color = new Map() // 1 = on current DFS path, 2 = fully explored
@@ -122,6 +133,7 @@ console.log(JSON.stringify({
   thrashBreaches: tickets
     .filter(t => !TERMINAL.has(t.status) && !breached(t) && thrashed(t))
     .map(t => t.id),
+  missingFiles,
   phases,
   phasesDrained: Object.keys(phases).filter(p => phases[p].remaining === 0),
   ready: ready.map(t => ({ id: t.id, title: t.title, files: t.files ?? [] })),

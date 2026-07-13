@@ -20,7 +20,8 @@ export const meta = {
 //                              // before invoking: the commit the worktrees fork from and the
 //                              // scope check's diff base — the verifier never guesses a merge-base
 //   lockedDecisions: string,   // frozen decisions block from oracle.md, verbatim
-//   baseline: string,          // the baseline gate: type-check/build/lint/full-test-suite commands
+//   baseline: string,          // the baseline gate's FAST tier (type-check/build/lint/unit suite);
+//                              // the gate tier (e2e/slow suites) runs at phase close, not per ticket
 //   phaseOracle: string,       // the phase's executable checks from oracle.md
 // }
 const { tickets, baseSha, lockedDecisions, baseline, phaseOracle } = args
@@ -144,7 +145,7 @@ const results = (await pipeline(
       'Do, in order: (1) build only this ticket; (2) add tests covering the new',
       'behavior (skip only for pure scaffold/config with nothing to test — say so);',
       "(3) run the BASELINE — you may scope its full-test-suite step to the tests",
-      'your change affects; the independent verifier runs the full suite — and the',
+      'your change affects; the independent verifier runs it in full — and the',
       'ACCEPTANCE; capture their real output.',
       '',
       'Return exactly one shape:',
@@ -172,8 +173,8 @@ const results = (await pipeline(
       'You are an INDEPENDENT verifier. You did not build this — do not trust the',
       "builder's report. Check out the branch below in a fresh worktree, then:",
       '',
-      '(1) RE-RUN the BASELINE — the FULL test suite, even if the builder scoped',
-      '    it — and the ACCEPTANCE yourself; capture real output. Exit codes',
+      '(1) RE-RUN the BASELINE in full — even if the builder scoped its suite',
+      '    step — and the ACCEPTANCE yourself; capture real output. Exit codes',
       "    decide pass/fail — not the builder's transcript.",
       `(2) SCOPE CHECK: \`git diff --name-only ${baseSha}..<branch>\` — that SHA is`,
       '    the commit this batch forked from. Every touched path must be in the',
@@ -190,7 +191,7 @@ const results = (await pipeline(
       `BRANCH: ${b.result.branch || '(discover via git worktree list / git branch — the worktree for this ticket)'}`,
       `DECLARED FILES: ${(b.ticket.files ?? []).join(', ')}`,
       '',
-      'BASELINE (must pass, full suite):',
+      'BASELINE (must pass, run in full):',
       baseline,
       '',
       'ACCEPTANCE (must pass):',

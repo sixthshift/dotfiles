@@ -126,7 +126,9 @@ node .ailoop/schedule.mjs
 
 It prints: structural problems (dangling/duplicate dependencies, dependents
 stranded on `decomposed` tickets, tickets with no declared `files`), dependency
-cycles, the ready set, file-disjoint fan-out batches (manifest/lockfiles
+cycles, the ready set, declared-but-missing paths per ticket (`missingFiles` —
+each is an intentional create or a guessed home to fix before dispatch),
+file-disjoint fan-out batches (manifest/lockfiles
 excluded — they're allowlisted for every ticket), attempt-cap **and thrash**
 breaches (both computed from the `attempts` log), per-phase drain state, a
 `complete` flag, and stale `in-progress` tickets. You judge what the output
@@ -176,7 +178,7 @@ coordinator's in-context knowledge:
   succeed. If you can't write it self-contained, the ticket is too big or too
   vague — decompose or sharpen it.
 - **`acceptance`** is the ticket-local oracle — its bespoke behavioral checks,
-  *on top of* the mandated baseline (type-check/build/lint/tests) every ticket
+  *on top of* the mandated fast-tier baseline every ticket
   clears (see **Verification**). Prefer input→output contrast checks over
   artifact-existence checks — existence is the most gameable form.
 - **`attempts`** is the durable diagnosis log — one entry per failed attempt:
@@ -236,19 +238,27 @@ builder's self-report alone — confirms three things:
 
 1. **Baseline (every ticket, no exceptions).** The project's standing quality
    gate, defined once in `oracle.md` and applied to *every* ticket regardless of
-   what it touched:
-   - type-check / compile clean
-   - build succeeds
-   - lint clean (if the project lints)
-   - **the full existing test suite passes** — this is the regression guard, and
-     it is how a ticket that breaks a previously-green one is caught
-     *immediately*, not at phase close.
-   Detect the exact commands from the project's manifest at intake (Stage 1.0).
-   Cost note: the **builder** may scope the full-test-suite step to the tests
-   its change affects — the **independent verifier always runs the full
-   suite**, and that authoritative run is what counts. Never scope the
-   verifier or the phase gate; as the suite grows, this is where the loop's
-   compute goes, and it is the one place it must.
+   what it touched. Detect the exact commands from the project's manifest at
+   intake (Stage 1.0) and classify each into a tier:
+   - **Fast tier — runs per ticket:** type-check/compile, build, lint, and the
+     full unit-test suite. This is the immediate regression net: a ticket that
+     breaks a previously-green unit test is caught at its own verify, not at
+     phase close.
+   - **Gate tier — runs per phase close:** slow suites (e2e, anything needing
+     a live server or minutes of wall-clock). These run on the merged tree at
+     the phase gate, not per ticket — per-ticket e2e is where the loop's
+     wall-clock goes, and phase-close granularity plus bisection buys it back.
+     Two obligations keep the deferral honest: a ticket shipping a NEW
+     gate-tier test runs that test itself (builder and verifier both — it is
+     the ticket's own acceptance, not the whole tier), and a ticket changing
+     behavior that an EXISTING gate-tier test pins names and re-runs that test.
+     The accepted cost: a gate-tier regression surfaces at phase close with
+     batch attribution — that is the gate-red bisection's job (2.3), and it is
+     why worker branches are kept until the gate is green.
+   Cost note: the **builder** may scope the fast tier's full-suite step to the
+   tests its change affects — the **independent verifier always runs the full
+   fast tier**, and that authoritative run is what counts. Never scope the
+   verifier's fast tier or the phase gate.
 2. **Ticket acceptance.** The ticket's own behavioral checks (its `acceptance`
    field), with captured output as evidence.
 3. **New tests for new behavior.** A ticket that adds behavior must add tests
@@ -265,8 +275,8 @@ dispatch, you re-run it yourself. The re-verify is more than re-running the
 builder's commands:
 
 - **Re-run baseline + acceptance** (mechanical: exit codes and captured output,
-  not the builder's transcript). The verifier runs the full suite even where
-  the builder scoped it.
+  not the builder's transcript). The verifier runs the full fast tier — plus
+  the ticket's own gate-tier tests — even where the builder scoped it.
 - **Scope check (mechanical).** `git diff --name-only <baseSha>..<branch>`,
   where `baseSha` is the fork point you captured (`git rev-parse HEAD`)
   immediately before dispatch — the verifier is handed the SHA, never left to
@@ -283,8 +293,9 @@ builder's commands:
 
 Three gates, widening — a ticket must pass the narrow one to earn the next:
 
-**baseline + acceptance + scope (independently re-verified, per ticket) →
-integration (merge clean) → phase oracle (merged tree).**
+**fast-tier baseline + acceptance + scope (independently re-verified, per
+ticket) → integration (merge clean) → gate-tier baseline + phase oracle
+(merged tree).**
 
 A ticket that regresses the baseline is a **failed** ticket even if its own
 acceptance passes.
@@ -355,8 +366,9 @@ human sees it and the drive runs unattended after.
      *this* way"). Write it as a runnable harness, not a vibe.
 
    Also record in `oracle.md`: the **baseline gate** — the type-check / build /
-   lint / full-test-suite commands (from Stage 1.0's toolchain detection) that
-   *every* ticket must pass regardless of what it touches (see **Verification**)
+   lint / test commands (from Stage 1.0's toolchain detection) that *every*
+   ticket must pass regardless of what it touches, classified into fast tier
+   (per ticket) and gate tier (per phase close) per **Verification**
    — and the **contract identity**: the spec's path, its `spec_version` (if the
    frontmatter has one), and its sha256 content hash (`shasum -a 256`). Resume
    verifies this identity before every run; it is what makes a mid-drive spec
@@ -376,7 +388,12 @@ human sees it and the drive runs unattended after.
 4. **Seed the backlog.** Turn each phase into tickets in `.ailoop/backlog.json`,
    each sized to one focused subagent session and written cold-start runnable
    (full schema above), each tagged with its `phase` and a **non-empty**
-   `files` declaration. Wire `depends_on` so the graph encodes the spec's
+   `files` declaration **anchored in evidence**: every declared path either
+   exists and demonstrably hosts the behavior (grep for it; cite the anchor in
+   `context`) or is an explicit create. Never infer what the codebase probably
+   calls things — a guessed home is a wasted dispatch when the builder
+   discovers the real one, and it is the single most repeated footprint bug in
+   practice. Wire `depends_on` so the graph encodes the spec's
    de-risk order — the riskiest phase's tickets come first and downstream
    tickets depend on them. Err small; you will decompose further mid-flight
    anyway. Do **not** try to enumerate every ticket for late phases perfectly —
@@ -422,6 +439,10 @@ directive 6):
   a `decomposed` ticket (rewire the edge to its children) and tickets with no
   declared `files` (declare the footprint or decompose).
 - `staleInProgress` non-empty → reconcile first (see **Resume**).
+- `missingFiles` names a ticket you're about to dispatch → resolve first: each
+  missing path is an intentional create (fine) or a guessed home — grep for
+  where the behavior actually lives and fix `files` now; the miss costs a
+  ledger entry here and a whole dispatch later.
 - `capBreaches` or `thrashBreaches` non-empty → those tickets are walls;
   escalate them (see 2.4).
 - `phasesDrained` names a phase whose oracle hasn't run yet (check the ledger)
@@ -456,13 +477,14 @@ workers costs loop iterations; never downgrade the gate.
   decisions + the declared `files` (touch only those, plus manifest/lockfile
   for dependencies) + **the full `attempts` log if this is a retry** — a fresh
   session must never re-diagnose from scratch. It must build, add tests for
-  new behavior, run baseline + acceptance (it may scope the full-suite step to
+  new behavior, run the fast-tier baseline + acceptance (it may scope the
+  full-suite step to
   affected tests), and report its **branch** with the captured output. Then
-  **you re-verify on that branch** (full baseline + acceptance + scope check
+  **you re-verify on that branch** (full fast tier + acceptance + scope check
   via `git diff --name-only <baseSha>..<branch>` + gaming read) before
   accepting — its self-report is only a claim. On accept, merge the branch
   into the mainline; if the mainline moved past `baseSha` since the fork,
-  re-run the baseline on the merged tree — that is the integration gate a
+  re-run the fast tier on the merged tree — that is the integration gate a
   batch run would have given you.
 - **A disjoint batch** → the `build-phase` Workflow (see the template),
   passing `baseSha` (`git rev-parse HEAD` at invocation) alongside the
@@ -513,6 +535,15 @@ The judgment the inner body cannot do:
   wall-clock waste. Append an `attempts` entry
   (`failed` / `hypothesis` / `fixNote`) to the ticket — the diagnosis must
   survive compaction — then re-dispatch with the full log.
+- **Resume before re-dispatch.** Whenever the builder session is still alive
+  and its work so far is sound — an honest scope stop, a flagged wrong
+  premise, a re-verify red whose fix is incremental (one more surface, a
+  missed test migration) — continue the SAME agent via SendMessage with a
+  targeted fixNote instead of dispatching fresh: it already holds the context
+  and the branch, and a fresh session re-derives both at full price. Dispatch
+  fresh only when the session is dead/stalled, or the diagnosis indicts the
+  builder's approach rather than its coverage — a gamed or wrong-headed
+  attempt is never resumed. A resume is a dispatch: ledger it like any other.
 - **Gaming suspicion** (verifier flagged the diff) → you read the diff and
   judge against the spec's intent. Gamed → failed attempt (append to
   `attempts`) **and** sharpen the acceptance that was gamed (escaped-bug rule).
@@ -524,7 +555,10 @@ The judgment the inner body cannot do:
   each is cold-start runnable, and red-team the fresh acceptance. This is
   expected and healthy, not a failure.
 - **`blocked`** → if the missing dependency is a ticket you can order, add/fix
-  the edge and requeue. If it's a genuine spec contradiction, escalate.
+  the edge and requeue. If it's a footprint gap — the declared home is wrong
+  or a needed file is undeclared — verify the builder's analysis yourself
+  (grep it), expand `files` with a ledger entry, and resume the same agent.
+  If it's a genuine spec contradiction, escalate.
 - **Merge conflicts** (batch) → manifest conflicts are mechanical: take the
   union of `package.json` additions and **regenerate the lockfile with the
   project's install command** — never hand-merge a lockfile. Other conflicts:
@@ -545,9 +579,10 @@ The judgment the inner body cannot do:
 - **Scope tripwire hit** → halt, report; do not "fix" it by building more.
 
 When the scheduler's `phasesDrained` shows a phase with no live tickets left —
-never your own tally of the backlog — run that **phase's oracle** from
-`oracle.md` on the merged tree: the ticket-local checks are necessary but the
-phase oracle is what actually closes a phase. Until it is green, **keep the
+never your own tally of the backlog — run the **baseline's gate tier** and that
+**phase's oracle** from
+`oracle.md` on the merged tree: the ticket-local checks are necessary, but the
+deferred slow suites plus the phase oracle are what actually close a phase. Until it is green, **keep the
 phase's worker branches** — a gate-red bisection needs them intact. Once it is
 green, prune: delete the merged worker branches and `git worktree prune`
 (ledger the phase close).
@@ -661,22 +696,25 @@ judge decision.
 - [ ] The ticket is cold-start runnable (self-contained `context`; full
       `attempts` log included on retries) with a non-empty `files` declaration
       and a `phase` tag.
+- [ ] Scheduler `missingFiles` resolved for the ticket: every missing declared
+      path is an intentional create, not a guessed home.
 - [ ] Its `acceptance` is executable (not vibes) and was red-teamed — at intake
       for seeded tickets, at creation for decomposed children and repairs.
 - [ ] Decomposed parents: dependents rewired onto the children.
 - [ ] Worker dispatched into a worktree with `baseSha` captured; ledgered as a
       dispatch.
-- [ ] Worker ran the baseline (full-suite step may be scoped to affected
-      tests) + acceptance; new behavior has new tests, green under the baseline.
-- [ ] **Independent re-verify** passed: FULL baseline + acceptance green,
+- [ ] Worker ran the fast-tier baseline (full-suite step may be scoped to
+      affected tests) + acceptance; new behavior has new tests, green under it.
+- [ ] **Independent re-verify** passed: FULL fast tier + the ticket's own
+      gate-tier tests + acceptance green,
       touched files (diffed from `baseSha`) ⊆ declared ∪ manifest allowlist,
       diff read for gaming — and no baseline regression.
 - [ ] Evidence written to `.ailoop/evidence/` and pointed at — never inlined
       into `backlog.json`.
 - [ ] Workers cite locked decisions; none re-litigated.
-- [ ] Only merged-tree checks count as green; phase oracle run when the
-      scheduler says the phase drained; branches kept until it's green, pruned
-      after.
+- [ ] Only merged-tree checks count as green; gate-tier baseline + phase
+      oracle run when the scheduler says the phase drained; branches kept
+      until they're green, pruned after.
 - [ ] Gate red after a clean merge → bisect + repair ticket; never patch the
       tree yourself.
 - [ ] Oracle changed only via the amendment tiers, each with a ledger entry.
