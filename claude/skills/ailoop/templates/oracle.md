@@ -49,6 +49,18 @@ Fast tier (per ticket):
 Gate tier (per phase close, merged tree):
 - [ ] e2e / slow suites: `<command>` → all pass
 
+## Flake quarantine
+
+<!-- Confirmed-flaky checks (SKILL.md — Flaky checks): discriminated by
+     isolated re-runs, root-caused OUT of this spec's scope, tolerated with
+     eyes open. The test still runs everywhere; failing IN ISOLATION is still
+     a hard red. Every entry is a residual in the final report. In-scope root
+     causes get a fix ticket instead of an entry here. -->
+
+| Test | Failure mode | Discriminator | Root cause (out of scope because…) |
+|---|---|---|---|
+| ... | ... | passes N/N isolated | ... |
+
 ## Per-phase acceptance (executable)
 
 Each check is a command + expected result, or a scripted behavioral test. A phase

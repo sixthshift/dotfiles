@@ -300,6 +300,31 @@ ticket) → integration (merge clean) → gate-tier baseline + phase oracle
 A ticket that regresses the baseline is a **failed** ticket even if its own
 acceptance passes.
 
+### Flaky checks — discriminate, then decide
+
+An intermittently failing check is never adjudicated by vibes and never
+tolerated silently. When a verify or gate fails on a test the ticket plausibly
+didn't touch:
+
+1. **Discriminate.** Re-run the failing test file **alone**, 3–5 times — a
+   single isolated pass is not conclusive; low-rate flakes exist. Fails in
+   isolation → real regression, the ticket failed. Passes in isolation →
+   flaky under the full run.
+2. **Decide on the record.** A confirmed flake still has a root cause —
+   usually test-infrastructure timing, occasionally a **real race in the
+   product**, which is why this step exists: a dismissed flake can be a masked
+   bug. Judge which, then:
+   - **Root cause in scope** (the test pins behavior this spec owns, or the
+     flake is a product race) → spawn a fix ticket — same spirit as the
+     escaped-bug rule.
+   - **Root cause out of scope** (pre-existing test-infra timing) →
+     **quarantine**: record the test, its failure mode, and its discriminator
+     in `oracle.md` so every later verify applies it without re-deriving, and
+     carry the entry into the final report as an explicit residual.
+
+   Quarantine narrows *interpretation*, never the check: the test still runs
+   everywhere, and a quarantined test failing in isolation is still a hard red.
+
 ---
 
 ## When a check is wrong — oracle amendments
@@ -527,7 +552,10 @@ The judgment the inner body cannot do:
   `.ailoop/evidence/<id>.txt` and store the pointer on the ticket, update the
   backlog. This may unblock downstream tickets.
 - **re-verify red** — acceptance failed, the ticket **regressed the baseline**,
-  OR it **touched undeclared files** → the ticket failed. Diagnose *why* using
+  OR it **touched undeclared files** → the ticket failed. A failing check the
+  ticket plausibly didn't touch goes through the flake discriminator first
+  (see **Flaky checks**) — never log an attempt against noise. Then diagnose
+  *why* using
   the spec — many specs tell you where to look (e.g. "if the behavior doesn't
   flip, the prompt is wrong, not the code"). Several failures in one batch →
   fan out one diagnosis agent per failed ticket, in parallel; the diagnoses
@@ -627,7 +655,8 @@ either: the next invocation picks it up from `.ailoop/`; see **Resume**.)
      of the work, honestly.
    - **Cut / deferred:** anything the spec deferred or you consciously left out.
    - **Drift caught:** scope tripwires, retries, gamed tickets, gate-red
-     bisections, oracle amendments — plain, not smoothed over.
+     bisections, oracle amendments, flake quarantines carried as residuals —
+     plain, not smoothed over.
 2. **Escalation** → "stuck at ticket T, here's the wall and the decision I
    need" — never a rosy summary of a loop that didn't finish.
 
