@@ -48,12 +48,24 @@ ailoop's intake extracts these; a spec missing any of them bounces:
 
 ## Durable state — the spec file is the whole memory
 
-Default location: `SPEC.md` at the repo root (where ailoop looks); a
-user-given path wins. Scaffold from `templates/spec.md`. Two pieces of state
+Default location: `specs/<slug>.md` (where ailoop looks); a user-given path
+wins. Specs coexist in `specs/` — drafts under interrogation, `locked` ready
+to run, `done` retired — but keep at most one `locked` at a time as the
+ideal: a locked spec queued behind another campaign goes stale by the time
+it runs (warn when a lock would create a second). Which spec is *in flight*
+is marked by the `.ailoop/` directory, not by anything in the folder. The folder is
+**untracked by design**: a spec is the next campaign's contract, not part of
+the repo's record — what a build leaves behind is code, tests, and graduated
+docs, never the spec that ordered them. Ensure `.gitignore` covers `specs/`
+and `.ailoop/` at scaffold. Accepted cost, on the record: the file is the
+whole memory AND git never protects it — a `git clean -fdx` loses the
+interrogation; the campaign is meant to be run to done in one pass, not
+parked. Scaffold from `templates/spec.md`. Two pieces of state
 live inside it:
 
-- **Frontmatter `status: draft | locked`.** Only a `locked` spec is a valid
-  ailoop contract; ailoop refuses to start on a draft.
+- **Frontmatter `status: draft | locked | done`.** Only a `locked` spec is a
+  valid ailoop contract; ailoop refuses to start on a draft and ignores
+  `done` specs.
 - **The Open Questions section** — your backlog. One entry per unresolved
   ambiguity; an answered question is deleted and its answer lands in the
   section it belongs to. This is what makes iterative invocation work:
@@ -70,9 +82,10 @@ spec is born from this skill, so it will be aispec-shaped; if the file at the
 spec path somehow isn't, stop and ask — adopting foreign documents is out of
 scope.)
 
-1. **Scaffold immediately.** Create the spec from the template *before asking
-   the human anything*. Durability precedes structure: the file must exist
-   before the material does.
+1. **Scaffold immediately.** Create the spec from the template in `specs/`
+   *before asking the human anything*, and ensure the `.gitignore` entries
+   (`specs/`, `.ailoop/`) exist. Durability precedes structure: the file must
+   exist before the material does.
 2. **Braindump, streamed to disk.** Invite the human to dump everything
    unstructured — goals, constraints, half-decisions, fears — and write each
    message **verbatim into the `## Braindump (raw)` section as it arrives**,
@@ -183,17 +196,18 @@ Invoked over a `locked` spec, first establish which situation this is — ask
 the human, don't infer:
 
 - **Amendment to a live (or paused) drive** → the change-order path below.
-- **New work after a finished build** → a new contract, not an amendment:
-  archive the locked spec (e.g. `specs/v1.md`) and the drained `.ailoop/`
-  directory alongside it, then start fresh — new spec file, full
+- **New work after a finished build** → a new contract, not an amendment.
+  ailoop's termination already closed the campaign — spec flipped to
+  `status: done`, `.ailoop/` deleted (if this one still reads `locked` from
+  an older run, flip it now). Start fresh — new spec file, full
   interrogation, new ailoop intake. Feature 2 deserves the same grilling
   feature 1 got; routing it through change orders on a dead contract gives it
   none.
 
   Before scaffolding the new spec, run the **graduation pass** over the
-  archived one. Inheritance is never spec-to-spec — the archive is a record,
-  not a source — and every line of a finished spec has exactly one of three
-  destinations:
+  retired one. Inheritance is never spec-to-spec — the `done` file is a
+  record, not a source — and every line of a finished spec has exactly one
+  of three destinations:
   1. **Consumed by the build** (decisions the code + tests now enforce —
      hashing choices, TTLs, response shapes) → leave it behind; the
      regression suite defends it, and re-deciding it is a fresh fork in the
@@ -204,11 +218,12 @@ the human, don't infer:
      there; the new spec **cites** it as standing, never restates it.
   3. **Campaign-relative** (phases and ordering, done-means checks — already
      graduated into the test suite — this drive's out-of-scope tripwire,
-     change orders) → dies in the archive as history.
-  Then scaffold the new spec pre-seeded with the standing constraints
-  (cited) and an "already exists" context read from reality — the code,
-  the tests, the drained backlog's done tickets — never from the old
-  spec's prose.
+     change orders) → dies with the file.
+  Then **delete the graduated spec** — every line now lives in code, docs,
+  or nowhere by decision — and scaffold the new spec pre-seeded with the
+  standing constraints (cited) and an "already exists" context read from
+  reality — the code, the tests, the merged work's git history — never from
+  the old spec's prose.
 
 A locked spec with an ailoop drive in flight has a backlog and an oracle
 derived from it; editing it in place is how the loop and the contract diverge
@@ -216,7 +231,8 @@ with nobody noticing. On any post-lock change request:
 
 - Append a **Change order** entry (date, the change, rationale) — never
   rewrite the locked section silently — then apply the change and bump
-  `spec_version`.
+  `spec_version`. The spec is untracked: this entry is the *only* record of
+  what changed; there is no git diff behind it, so write it complete.
 - Warn what it means downstream — concretely, because the machinery will act
   on it: ailoop recorded the spec's hash in `oracle.md` at intake, and its
   next resume **recomputes and refuses to dispatch on a mismatch**. The

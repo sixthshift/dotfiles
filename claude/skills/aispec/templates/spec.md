@@ -1,5 +1,5 @@
 ---
-status: draft            # draft | locked — ailoop refuses to start on a draft
+status: draft            # draft | locked | done — ailoop runs only a locked spec; done = retired
 spec_version: 1          # bumped by change orders after lock
 ---
 

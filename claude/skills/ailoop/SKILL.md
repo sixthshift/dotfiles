@@ -361,13 +361,21 @@ after an interruption). Produce `.ailoop/oracle.md`, `.ailoop/backlog.json`, and
 `.ailoop/evidence/` for captured check output. This is the pre-flight; the
 human sees it and the drive runs unattended after.
 
-0. **Locate the spec.** Use the path the user gave. Otherwise look for a locked
-   build spec in the repo root or `docs/` (`spec.md`, `SPEC.md`, `PLAN.md`, or
-   similar). If none exists, or several plausible candidates do, **stop and ask**
-   — do not guess which document is the contract. A spec authored by the
-   `aispec` skill carries `status:` frontmatter: `locked` is a contract;
-   **`draft` is a refuse-to-start** — send the human back to `/aispec` to
-   finish it. Also detect the project's own
+0. **Locate the spec.** `.ailoop/` already exists → this is a resume, and
+   `oracle.md`'s contract identity names the spec — never re-pick (see
+   **Resume**). Otherwise use the path the user gave, or look in `specs/` for
+   `status: locked` frontmatter (`draft` specs are invisible here; `done` are
+   retired legacy):
+   - **exactly one locked** → that is the contract;
+   - **several locked** → **ask which** (AskUserQuestion). Ideally only one
+     spec is locked at a time — a spec queued behind another campaign goes
+     stale waiting — and picking the campaign is intent, never defaulted.
+     The `.ailoop/` created at intake is what marks the chosen one active
+     from then on;
+   - **none locked** (drafts only, nothing, or only a legacy root
+     `SPEC.md`/`PLAN.md`) → **refuse to start** — a draft goes back to
+     `/aispec` to finish; a legacy or ambiguous document is a stop-and-ask,
+     never a guess. Also detect the project's own
    toolchain (type-check / test / build commands, package manager) from its
    manifest; the oracle's checks must use *this* project's commands, not
    assumed ones.
@@ -444,6 +452,15 @@ human sees it and the drive runs unattended after.
    `attempts` log). There is no cap on total dispatches — the run goes to
    completion. Snapshot the caps in the ledger run header.
 
+7. **Keep the campaign out of git.** `.ailoop/` and `specs/` are untracked by
+   design — campaign state, noise in the project's history. Ensure
+   `.gitignore` covers both (add the entries if missing). The run's durable
+   record is the merged code, its tests, and the workers' branch commits;
+   the rare commit you author on the mainline yourself goes through the
+   **`commit` skill**. Accepted cost, on the record: disk holds the
+   campaign's only copy — a `git clean -fdx` mid-run wipes the loop's memory
+   (worker branches survive; a re-intake reconciles).
+
 Report the intake to the user as a short pre-flight: the phase→oracle map, the
 seeded backlog (ticket count + the first few ready tickets + the dependency
 spine), the caps, the red-team findings, and any oracle you had to ask them to
@@ -504,7 +521,9 @@ workers costs loop iterations; never downgrade the gate.
   session must never re-diagnose from scratch. It must build, add tests for
   new behavior, run the fast-tier baseline + acceptance (it may scope the
   full-suite step to
-  affected tests), and report its **branch** with the captured output. Then
+  affected tests), commit its work on the branch in conventional format
+  (those commits merge into the mainline's permanent history), and report its
+  **branch** with the captured output. Then
   **you re-verify on that branch** (full fast tier + acceptance + scope check
   via `git diff --name-only <baseSha>..<branch>` + gaming read) before
   accepting — its self-report is only a claim. On accept, merge the branch
@@ -657,7 +676,15 @@ either: the next invocation picks it up from `.ailoop/`; see **Resume**.)
    - **Drift caught:** scope tripwires, retries, gamed tickets, gate-red
      bisections, oracle amendments, flake quarantines carried as residuals —
      plain, not smoothed over.
-2. **Escalation** → "stuck at ticket T, here's the wall and the decision I
+
+   Then **close the campaign**: flip the spec's frontmatter to `status: done`
+   and **delete `.ailoop/`** — its presence is what marks a campaign in
+   flight, and the next intake's spec lookup relies on that invariant. The
+   `done` spec stays on disk (untracked) until the next `/aispec` session
+   graduates and deletes it.
+2. **Escalation** — closes nothing: the spec stays `locked` and `.ailoop/`
+   stays put, so the resolved escalation resumes exactly where it stopped.
+   The report is "stuck at ticket T, here's the wall and the decision I
    need" — never a rosy summary of a loop that didn't finish.
 
 ## Resume — after an interruption or a resolved escalation
@@ -668,7 +695,9 @@ and run the scheduler. Reconcile before dispatching:
 
 - **Contract changed** — recompute the spec's sha256 and compare it to the
   contract identity in `oracle.md`. Mismatch → the spec changed since intake
-  (read its Change orders section to see what and why): **stop before any
+  (read its Change orders section to see what and why — the spec is
+  untracked, so that section is the *only* record; there is no git diff
+  behind it): **stop before any
   dispatch** and reconcile with the human. A change to *what behavior counts
   as done* goes through the semantic amendment tier; a structural change may
   need affected backlog tickets reseeded. Never resume silently against a
@@ -682,7 +711,8 @@ and run the scheduler. Reconcile before dispatching:
   nothing durable happened; reset to `todo`.
 - **Legacy markdown backlog** (`backlog.md` from an older version of this
   skill): convert it to `backlog.json` once, preserving all tickets and history
-  verbatim; ledger entry.
+  verbatim; ledger entry. Same vintage: a *tracked* `.ailoop/` or `specs/` —
+  `git rm -r --cached` it and add the gitignore entries on first resume.
 
 The files are the whole memory. If a fact from a previous run matters and isn't
 in them, it's gone — that's a bug in what was written, and the fix is to write
@@ -693,7 +723,13 @@ more into the ticket/ledger *this* run, not to try to remember harder.
 ## Durable state — the `.ailoop/` directory
 
 Trust these files over your recollection; they are what survives context
-compaction and an interrupted run.
+compaction and an interrupted run. The directory is **untracked — gitignored
+at intake (Stage 1.7)**: campaign state is noise in the project's history,
+and the run's durable record is the merged code and its tests, not the
+ledger. Disk therefore holds the only copy; the one hazard is a mid-run
+`git clean -fdx`, accepted on the record. The directory lives exactly as long
+as its campaign — created at intake, deleted at termination — so its presence
+is what marks which spec is in flight.
 
 - **`backlog.json`** — the **forward** state and the loop driver: the ticket
   queue with status, phase, dependencies, and per-ticket `attempts` diagnosis
@@ -750,6 +786,9 @@ judge decision.
 - [ ] Attempt/thrash breaches read from the scheduler before every re-dispatch.
 - [ ] Nothing built crosses the out-of-scope list.
 - [ ] `backlog.json` and `ledger.md` updated; coverage map current.
+- [ ] Nothing under `.ailoop/` or `specs/` staged or committed — campaign
+      state stays untracked; the rare mainline commit you author yourself
+      goes through the `commit` skill.
 
 ## Scope of this skill
 
