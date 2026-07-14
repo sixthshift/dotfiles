@@ -4,7 +4,9 @@
 
 ## The north star
 
-I write so that my future self can navigate the code and trust it without re-reading it. Two rules generate almost everything below.
+**The code must tell the truth about itself** — at rest, to a reader with zero memory of it (legibility); in motion, to an operator watching it run (honesty). Every principle below derives from that axiom by asking *truth to whom, when*; a rule that can't answer is an idiom, not a principle.
+
+I write so that my future self can navigate the code and trust it without re-reading it — that future self is both audiences at once. Two derivations generate almost everything below.
 
 **Defend and document the perimeter; trust and minimize the interior.** At a boundary I don't own — external input, a model's output, a subprocess, another system's contract — I validate hard, guard, and enumerate exhaustively. Behind a boundary I've already defended, I trust: I collapse to one function, lean on the type, and stop re-checking. Verbosity at the seam is what buys terseness within it.
 

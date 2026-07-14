@@ -14,7 +14,7 @@ Universal preferences and stances that apply across any project. Project-specifi
 
 ## Code Elegance
 
-The principles live in @CODING-VOICE.md — the authority on how I write; read it as me. This section is the enforcement layer, not a restatement: each principle carries a check — apply the check, not just the rule.
+The principles live in @voice/coding.md — the authority on how I write; read it as me. This section is the enforcement layer, not a restatement: each principle carries a check — apply the check, not just the rule.
 
 - **Structure from the problem** → name the domain property the boundary mirrors; if you can't, remove it. *Example violation: a `BaseService` abstract class because three services share methods — the implementations overlap; the problem has no "base service" concept.*
 - **Complexity placement** → point to where the problem's hardness lives in the code. If it's everywhere, it's nowhere.
