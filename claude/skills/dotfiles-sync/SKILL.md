@@ -19,7 +19,8 @@ Optional argument pins the intent:
   ```bash
   DOTFILES="$(git -C "$(readlink ~/.claude/skills)" rev-parse --show-toplevel)"
   ```
-- Branch `main`, remote `origin` (GitHub over SSH — repo is public: the secrets gate below is mandatory).
+- Branch `main`, remote `origin` on GitHub. The repo is **public** — the secrets gate below is mandatory.
+- Transport is per-machine (VS Code's dotfiles feature clones over HTTPS): if push fails on auth, push one-off over SSH (`git push git@github.com:<owner>/dotfiles.git main`) — don't rewrite the remote.
 - `~/.claude/skills` symlinks to `claude/skills/` inside this repo, so this skill syncs itself and its sibling skills. A pull can change skills available to the *running* session — always report skill changes.
 
 ## Procedure
