@@ -357,7 +357,8 @@ honest. "Frozen" means never *silently* changed — not never changed:
 Do this once, on the first invocation only (see **Resume** for re-invocations
 after an interruption). Produce `.ailoop/oracle.md`, `.ailoop/backlog.json`, and
 `.ailoop/ledger.md` (templates in `templates/`), copy
-`templates/schedule.mjs` → `.ailoop/schedule.mjs`, and create
+`templates/schedule.mjs` → `.ailoop/schedule.mjs` and
+`templates/report.mjs` → `.ailoop/report.mjs`, and create
 `.ailoop/evidence/` for captured check output. This is the pre-flight; the
 human sees it and the drive runs unattended after.
 
@@ -665,6 +666,14 @@ either: the next invocation picks it up from `.ailoop/`; see **Resume**.)
    `done` ticket or a green check, or sit explicitly under Cut / deferred. An
    unmapped requirement means the build is **not** done, whatever the backlog
    says: seed the missing tickets and keep driving. Then the **final report**:
+   - **Run audit:** run `node .ailoop/report.mjs` and lead with its output — the
+     operational glimpse a long unattended run otherwise hides: wall-clock by
+     phase (active vs. paused-awaiting-human), the long poles, the work
+     breakdown (dispatches, retries, decompositions, escalations). It is
+     computed from the ledger's stamps, not narrated by you; add a line or two
+     reading where the time went and any optimization it suggests, but the
+     numbers are the script's. If the audit reports unmeasured gaps, say so —
+     never paper over them with estimates.
    - **Shipped:** what was built, keyed by phase / ticket.
    - **Oracle evidence:** the passing check output per phase (the proof, not
      your say-so).
@@ -691,7 +700,10 @@ either: the next invocation picks it up from `.ailoop/`; see **Resume**.)
 
 `.ailoop/` exists → a previous run already did intake; skip it entirely. Read
 `oracle.md`, the ledger tail,
-and run the scheduler. Reconcile before dispatching:
+and run the scheduler. Reconcile before dispatching. If the last run ended on an
+escalation, open with a stamped `resume`-kind ledger entry (subject `run`) — it
+closes the human-pause window the `escalate` entry opened, so the run audit
+credits that idle time to the human, not the loop.
 
 - **Contract changed** — recompute the spec's sha256 and compare it to the
   contract identity in `oracle.md`. Mismatch → the spec changed since intake
@@ -738,6 +750,11 @@ is what marks which spec is in flight.
 - **`schedule.mjs`** — the deterministic scheduler (copied from templates at
   intake). Ready sets, batches, cap/thrash breaches, phase drain, completion —
   computed, never eyeballed.
+- **`report.mjs`** — the deterministic run auditor (copied from templates at
+  intake). Reads the ledger's stamped entry headers + `backlog.json` and prints
+  the **run audit**: wall-clock by phase, the long poles, the work breakdown.
+  Aggregating timestamps is arithmetic (Prime directive 6), so it lives here,
+  not in your eyeballing. Runnable any time; run at termination for the report.
 - **`oracle.md`** — the **definition of done**: locked decisions, the scope
   tripwire list, the baseline gate, the executable per-phase checks, and the
   spec→delivery coverage map. Written at intake; amendable only per the
@@ -745,8 +762,14 @@ is what marks which spec is in flight.
   escalate); workers cite it; you gate against it.
 - **`ledger.md`** — the append-only **journal**: every dispatch, every judge
   decision and why, oracle amendments, red-team findings, decompositions,
-  drift flags, escalations. The audit trail — how the loop
-  got where it is.
+  drift flags, escalations. The audit trail — how the loop got where it is.
+  Each entry opens with a stamped, machine-readable header
+  (`[<seq> | <isoTs> | <kind> | <subject>]`) followed by the prose body — the
+  header is the loop's only timing record, so append entries with a **live
+  `date` read** (`$(date -u +%FT%TZ)`) rather than a hand-typed time; a forged
+  or missing stamp is the one way to blind the audit. `report.mjs` parses the
+  header, never the prose. Timing is telemetry: a malformed stamp costs one
+  unmeasured gap in the audit, never a broken loop.
 - **`evidence/`** — captured check output, one file per re-verify
   (`T017.txt`; failed-attempt logs `T017-a2.txt`). Tickets and the ledger hold
   pointers into it; `backlog.json` stays lean.
@@ -785,7 +808,8 @@ judge decision.
 - [ ] Oracle changed only via the amendment tiers, each with a ledger entry.
 - [ ] Attempt/thrash breaches read from the scheduler before every re-dispatch.
 - [ ] Nothing built crosses the out-of-scope list.
-- [ ] `backlog.json` and `ledger.md` updated; coverage map current.
+- [ ] `backlog.json` and `ledger.md` updated — ledger entry appended with a
+      live-`date` stamp and a `kind` in its header; coverage map current.
 - [ ] Nothing under `.ailoop/` or `specs/` staged or committed — campaign
       state stays untracked; the rare mainline commit you author yourself
       goes through the `commit` skill.
