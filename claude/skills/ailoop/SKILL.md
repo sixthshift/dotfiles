@@ -390,9 +390,10 @@ Do this once, on the first invocation only (see **Resume** for re-invocations
 after an interruption). Produce `.ailoop/oracle.md`, `.ailoop/backlog.json`, and
 `.ailoop/ledger.md` (templates in `templates/`), copy
 `templates/schedule.mjs` → `.ailoop/schedule.mjs`,
-`templates/verify.mjs` → `.ailoop/verify.mjs`, and
-`templates/report.mjs` → `.ailoop/report.mjs`, and create
-`.ailoop/evidence/` for captured check output. This is the pre-flight; the
+`templates/verify.mjs` → `.ailoop/verify.mjs`,
+`templates/report.mjs` → `.ailoop/report.mjs`,
+`templates/timing.mjs` → `.ailoop/timing.mjs`, and create
+`.ailoop/evidence/` for captured check output and per-ticket sidecars. This is the pre-flight; the
 human sees it and the drive runs unattended after.
 
 0. **Locate the spec.** `.ailoop/` already exists → this is a resume, and
@@ -628,7 +629,9 @@ The judgment the inner body cannot do:
   out-of-scope files, no credible gaming suspicion) **+ in scope** → mark the
   ticket `done`, write the **re-verify** evidence to
   `.ailoop/evidence/<id>.txt` and store the pointer on the ticket, update the
-  backlog. This may unblock downstream tickets.
+  backlog. This may unblock downstream tickets. **Then capture the per-ticket
+  sidecars now** (see **Capture at accept** below) — this is the only moment the
+  worker's transcript still exists.
 - **re-verify red** — acceptance failed, the ticket **regressed the baseline**,
   OR it **touched undeclared files** → the ticket failed. A failing check the
   ticket plausibly didn't touch goes through the flake discriminator first
@@ -694,6 +697,46 @@ phase's worker branches** — a gate-red bisection needs them intact. Once it is
 green, prune: delete the merged worker branches and `git worktree prune`
 (ledger the phase close).
 
+### 2.3b Capture at accept — the per-ticket dossier
+
+The ledger records *decisions*; it deliberately stays lean (it is re-read every
+loop turn). The richer per-ticket record — how long, how expensive, what was
+learned — lives in **`evidence/<id>.<kind>.json` sidecars**, and it must be
+written **at accept, not at termination**. Why: the sidecars derive from the
+worker's transcript, and transcripts are **ephemeral — the harness reaps them on
+its own clock, often mid-run**. By the time the run closes, the early tickets'
+transcripts are already gone. Accept is the only moment the data still exists.
+`report.mjs` reads the sidecars, never a transcript.
+
+The convention is a **contract, not a fixed schema**: a facet is
+`evidence/<id>.<kind>.json`; `report.mjs` globs `<id>.*.json` and merges whatever
+it finds (known kinds get a tuned line, unknown kinds are dumped compact — so a
+new facet is a new file, never a code change). Write these on every accept:
+
+- **`<id>.timing.json`** — run
+  `node .ailoop/timing.mjs --ticket <id> <transcript-path> [<more paths>]`
+  **immediately on accept**, passing the worker's transcript(s) (build + any
+  verify/gaming + a resume all aggregate). It writes the activity split
+  (deps / implementation / tests / typecheck / db / **reasoning** / …). The
+  transcript path is the `output-file` from the `<task-notification>` (direct
+  dispatch) or the workflow's `agent-<id>.jsonl`. The dominant bucket is almost
+  always `reasoning` — that is the model thinking and generating code, not test
+  runs; naming it is the point.
+- **`<id>.cost.json`** — `{ tokens, agents, dispatches }`. `tokens` is
+  `subagent_tokens` from the notification (sum across a ticket's dispatches);
+  `agents`/`dispatches` you already know. Free at accept, gone later.
+- **`<id>.findings.json`** — `{ worker, rationale, amendments, escaped_bugs }`.
+  The worker's notable finding (from its result), your one-line accept rationale,
+  and any oracle amendment or escaped-bug this ticket triggered. This is the
+  searchable "what did we learn / what bit us" record — otherwise it survives
+  only in commit bodies and the reaped transcript.
+- Optionally **`<id>.verify.json`** — `{ verdict, gaming, scope, flakes }` — the
+  gaming-read verdict and scope result, if worth freezing beyond the ledger.
+
+Same rule as check output: sidecars are the bulk home; `backlog.json` stays lean
+(the ticket's `evidence` field still points at `<id>.txt`). New facet worth
+capturing later → new `<id>.<kind>.json` kind; nothing else changes.
+
 ### 2.4 Enforce the caps
 **Before every re-dispatch** (per ticket, read from the scheduler's
 `capBreaches` and `thrashBreaches` — never from memory or an eyeballed diff of
@@ -725,14 +768,20 @@ either: the next invocation picks it up from `.ailoop/`; see **Resume**.)
    `done` ticket or a green check, or sit explicitly under Cut / deferred. An
    unmapped requirement means the build is **not** done, whatever the backlog
    says: seed the missing tickets and keep driving. Then the **final report**:
-   - **Run audit:** run `node .ailoop/report.mjs` and lead with its output — the
-     operational glimpse a long unattended run otherwise hides: wall-clock by
-     phase (active vs. paused-awaiting-human), the long poles, the work
-     breakdown (dispatches, retries, decompositions, escalations). It is
-     computed from the ledger's stamps, not narrated by you; add a line or two
-     reading where the time went and any optimization it suggests, but the
-     numbers are the script's. If the audit reports unmeasured gaps, say so —
-     never paper over them with estimates.
+   - **Run audit + per-ticket dossier:** run
+     `node .ailoop/report.mjs --out specs/<spec-basename>.run-report.md` and lead
+     with its output. **The `--out` is mandatory and must point OUTSIDE
+     `.ailoop/`** (the spec folder) — `.ailoop/` is deleted seconds later, so a
+     report written inside it dies with it; this is the durable artifact that
+     outlives the campaign. The audit half is the operational glimpse a long
+     unattended run hides (wall-clock by phase active-vs-paused, the long poles,
+     the work breakdown); the dossier half is the per-ticket breakdown from the
+     `evidence/<id>.*.json` sidecars (timing split, cost, findings) — the inside
+     of each ticket, not just phase totals. It is computed from the ledger stamps
+     and the sidecars, not narrated by you; add a line or two reading where the
+     time went, but the numbers are the script's. If the dossier is empty or the
+     audit reports unmeasured gaps, say so — never paper over them with estimates
+     (an empty dossier means the accept-time capture in 2.3b was skipped).
    - **Shipped:** what was built, keyed by phase / ticket.
    - **Oracle evidence:** the passing check output per phase (the proof, not
      your say-so).
@@ -745,11 +794,12 @@ either: the next invocation picks it up from `.ailoop/`; see **Resume**.)
      bisections, oracle amendments, flake quarantines carried as residuals —
      plain, not smoothed over.
 
-   Then **close the campaign**: flip the spec's frontmatter to `status: done`
-   and **delete `.ailoop/`** — its presence is what marks a campaign in
-   flight, and the next intake's spec lookup relies on that invariant. The
-   `done` spec stays on disk (untracked) until the next `/aispec` session
-   graduates and deletes it.
+   Then **close the campaign**: confirm the run report was written to the spec
+   folder (the `--out` above) — that is the only record that survives — flip the
+   spec's frontmatter to `status: done`, and **delete `.ailoop/`**. Its presence
+   is what marks a campaign in flight, and the next intake's spec lookup relies
+   on that invariant. The `done` spec and its `.run-report.md` stay on disk
+   (untracked) until the next `/aispec` session graduates and deletes them.
 2. **Escalation** — closes nothing: the spec stays `locked` and `.ailoop/`
    stays put, so the resolved escalation resumes exactly where it stopped.
    The report is "stuck at ticket T, here's the wall and the decision I
@@ -815,11 +865,21 @@ is what marks which spec is in flight.
   exit codes decide, never a model. The gaming read over its dumped diff is
   the only judgment verification keeps. Doubles as the flake probe
   (`--cmd ... --repeat N`).
-- **`report.mjs`** — the deterministic run auditor (copied from templates at
-  intake). Reads the ledger's stamped entry headers + `backlog.json` and prints
-  the **run audit**: wall-clock by phase, the long poles, the work breakdown.
-  Aggregating timestamps is arithmetic (Prime directive 6), so it lives here,
-  not in your eyeballing. Runnable any time; run at termination for the report.
+- **`report.mjs`** — the deterministic run auditor + dossier assembler (copied
+  from templates at intake). Reads the ledger's stamped entry headers +
+  `backlog.json` for the **run audit** (wall-clock by phase, long poles, work
+  breakdown), and globs `evidence/<id>.*.json` for the **per-ticket dossier**
+  (timing split, cost, findings — the inside of each ticket). Aggregating
+  timestamps and merging sidecars is arithmetic (Prime directive 6), so it lives
+  here, not in your eyeballing. `--out <path>` writes the report to a durable
+  location; at termination that path is the spec folder (outside `.ailoop/`, or
+  it dies with the delete). Never reads a transcript — only the sidecars, which
+  is why they must be captured while transcripts still exist (2.3b).
+- **`timing.mjs`** — the per-ticket transcript parser (copied from templates at
+  intake). `--ticket <id> <transcript.jsonl> …` → `evidence/<id>.timing.json`,
+  the activity split (deps / impl / tests / typecheck / db / reasoning). Run at
+  **accept** (2.3b), while the worker's transcript is still on disk — transcripts
+  reap on the harness's clock, not the loop's.
 - **`oracle.md`** — the **definition of done**: locked decisions, the scope
   tripwire list, the baseline gate, the executable per-phase checks, and the
   spec→delivery coverage map. Written at intake; amendable only per the
@@ -837,8 +897,12 @@ is what marks which spec is in flight.
   unmeasured gap in the audit, never a broken loop.
 - **`evidence/`** — captured check output, one file per re-verify
   (`T017.txt`; failed-attempt logs `T017-a2.txt`), plus the dumped diff per
-  verify (`T017-diff.patch` — the gaming read's input). Tickets and the ledger
-  hold pointers into it; `backlog.json` stays lean.
+  verify (`T017-diff.patch` — the gaming read's input), plus the per-ticket
+  **dossier sidecars** `<id>.<kind>.json` captured at accept (2.3b):
+  `<id>.timing.json`, `<id>.cost.json`, `<id>.findings.json`, and any future
+  kind. `report.mjs` globs `<id>.*.json` — a new facet is a new file, never a
+  code change. Tickets and the ledger hold pointers into it; `backlog.json`
+  stays lean.
 
 Update `backlog.json` after every ticket outcome and `ledger.md` after every
 judge decision.
@@ -866,6 +930,9 @@ judge decision.
       for `scaffold` tickets).
 - [ ] Evidence written to `.ailoop/evidence/` and pointed at — never inlined
       into `backlog.json`.
+- [ ] On accept, per-ticket sidecars captured **while the transcript still
+      exists** (2.3b): `<id>.timing.json` (via `timing.mjs`), `<id>.cost.json`,
+      `<id>.findings.json`.
 - [ ] Workers cite locked decisions; none re-litigated.
 - [ ] Only merged-tree checks count as green; gate-tier baseline + phase
       oracle run when the scheduler says the phase drained; branches kept
