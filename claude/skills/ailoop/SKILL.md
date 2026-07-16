@@ -144,6 +144,9 @@ coordinator's in-context knowledge:
 {
   "project": "<name>",
   "caps": { "maxAttempts": 3, "thrash": 2 },
+  "fastChecks": [           // machine mirror of oracle.md's fast tier — verify.mjs runs it
+    { "name": "type-check", "cmd": "bun run check" }
+  ],
   "tickets": [
     {
       "id": "T017",
@@ -157,6 +160,11 @@ coordinator's in-context knowledge:
       "origin": "spec §4.2",   // or "decomposed from T0NN" or "repair: gate red after T012+T014"
       "context": "Spec §4.2 defines the request/response shape; §4.5 the token rules (frozen). Locked (cite oracle.md): bcrypt hashing, 15-min token TTL. Already exists: User model (T003), db access layer (T009). Build ONLY this endpoint: validate credentials, issue a session token.",
       "acceptance": "- <project type-check command> passes\n- POST /session with valid creds → 200 + token; with bad creds → 401",
+      "acceptanceChecks": [    // the runnable mirror of acceptance — verify.mjs executes these
+        { "name": "session-endpoint", "cmd": "bun test src/server/auth.test.ts" }
+      ],
+      "builderModel": "haiku", // OPTIONAL: opt-down for an obviously-mechanical ticket; default sonnet
+      "scaffold": true,        // OPTIONAL: pure scaffold/config — the gaming read is skipped
       "attempts": [],          // durable diagnosis log — see below
       "evidence": null         // filled on completion: a POINTER into .ailoop/evidence/
                                // to the INDEPENDENT re-verify's output — never inline
@@ -181,6 +189,10 @@ coordinator's in-context knowledge:
   *on top of* the mandated fast-tier baseline every ticket
   clears (see **Verification**). Prefer input→output contrast checks over
   artifact-existence checks — existence is the most gameable form.
+  **`acceptanceChecks`** is its runnable mirror: named `{name, cmd}` commands
+  `verify.mjs` executes. An acceptance line that can't be written as a command
+  isn't executable acceptance — sharpen it until it is (usually: the builder
+  ships a test pinning it, and the check runs that test).
 - **`attempts`** is the durable diagnosis log — one entry per failed attempt:
   `{ "n": 1, "failed": ["<check name>", ...], "hypothesis": "<why>", "fixNote":
   "<instruction given on re-dispatch>" }`. `failed` is an **array of check
@@ -267,29 +279,40 @@ builder's self-report alone — confirms three things:
    behavior to test, and say so in the ticket.
 
 The builder runs all of this itself and returns the evidence — but its word is
-a **claim**. The authoritative signal is the **independent re-verify**: a
-separate agent (or you) re-checks the ticket's tree before the ticket is
-accepted. In the fan-out Workflow this is a dedicated Verify stage per ticket,
-run on the worker's worktree *before* integration; for a single-ticket
-dispatch, you re-run it yourself. The re-verify is more than re-running the
-builder's commands:
+a **claim**. The authoritative signal is the **independent re-verify**, and it
+splits by kind: the *measurement* is `verify.mjs` (copied from templates at
+intake) — a script, because exit codes and set arithmetic need no model — and
+the *judgment* is the gaming read over the diff the script dumps. In the
+fan-out Workflow the Verify stage is a cheap relay that runs the script, with
+a session-model gaming read pipelined behind it; for a single-ticket dispatch
+you run the script and read the diff yourself. What the re-verify covers:
 
-- **Re-run baseline + acceptance** (mechanical: exit codes and captured output,
-  not the builder's transcript). The verifier runs the full fast tier — plus
-  the ticket's own gate-tier tests — even where the builder scoped it.
-- **Scope check (mechanical).** `git diff --name-only <baseSha>..<branch>`,
-  where `baseSha` is the fork point you captured (`git rev-parse HEAD`)
-  immediately before dispatch — the verifier is handed the SHA, never left to
-  guess a merge-base. Every touched path must be in the ticket's declared
-  `files` or the manifest allowlist (`package.json` + lockfiles — any ticket
-  may add a dependency). An undeclared touch **fails the ticket** with the
-  overflow listed. This is what lets the parallelism scheduler trust `files`.
-- **Gaming read (judgment).** Read the diff and ask: was the acceptance
-  satisfied by implementing the intent, or by gaming the check — hardcoded
-  outputs, weakened or deleted tests, special-cased inputs? Suspicion doesn't
-  auto-fail; it comes to you with the *why*, and you judge against the spec. A
-  confirmed gamed ticket is a failed attempt **and** triggers the escaped-bug
-  rule (below).
+- **`verify.mjs` measures (mechanical, no model).** Run from the repo root
+  against the worker's worktree
+  (`node .ailoop/verify.mjs --ticket <id> --dir <worktree> --base <baseSha>`),
+  it: refuses a **dirty tree** (only committed work merges, so only committed
+  work verifies); re-runs the **full fast tier** plus the ticket's
+  `acceptanceChecks` — exit codes decide, not the builder's transcript — even
+  where the builder scoped its suite (a ticket with its own gate-tier tests
+  carries them in `acceptanceChecks`); **scope-checks**
+  `git diff --name-only <baseSha>..HEAD` against the declared `files` ∪
+  manifest allowlist (`package.json` + lockfiles — any ticket may add a
+  dependency; an undeclared touch **fails the ticket** with the overflow
+  listed — this is what lets the parallelism scheduler trust `files`); and
+  dumps the evidence and the diff patch into `.ailoop/evidence/`. Its
+  `failing` array is stable check *names* — it becomes the `attempts` entry's
+  `failed` set, verbatim. `baseSha` is the fork point you captured
+  (`git rev-parse HEAD`) immediately before dispatch — the script is handed
+  it, never left to guess a merge-base.
+- **Gaming read (judgment — never downgraded).** Read the dumped diff and ask:
+  was the acceptance satisfied by implementing the intent, or by gaming the
+  check — hardcoded outputs, weakened or deleted tests, special-cased inputs?
+  Suspicion doesn't auto-fail; it comes to you with the *why*, and you judge
+  against the spec. A confirmed gamed ticket is a failed attempt **and**
+  triggers the escaped-bug rule (below). Skip the read only for tickets marked
+  `scaffold: true` — pure scaffold/config with nothing behavioral to game. Its
+  hit rate is measurable from the ledger; tune its scope from that evidence,
+  not vibes.
 
 Three gates, widening — a ticket must pass the narrow one to earn the next:
 
@@ -307,9 +330,11 @@ tolerated silently. When a verify or gate fails on a test the ticket plausibly
 didn't touch:
 
 1. **Discriminate.** Re-run the failing test file **alone**, 3–5 times — a
-   single isolated pass is not conclusive; low-rate flakes exist. Fails in
-   isolation → real regression, the ticket failed. Passes in isolation →
-   flaky under the full run.
+   single isolated pass is not conclusive; low-rate flakes exist. The probe is
+   `verify.mjs` in ad-hoc mode:
+   `--cmd "<single-file test command>" --repeat 5` (pass counts land in the
+   evidence file). Fails in isolation → real regression, the ticket failed.
+   Passes in isolation → flaky under the full run.
 2. **Decide on the record.** A confirmed flake still has a root cause —
    usually test-infrastructure timing, occasionally a **real race in the
    product**, which is why this step exists: a dismissed flake can be a masked
@@ -357,7 +382,8 @@ honest. "Frozen" means never *silently* changed — not never changed:
 Do this once, on the first invocation only (see **Resume** for re-invocations
 after an interruption). Produce `.ailoop/oracle.md`, `.ailoop/backlog.json`, and
 `.ailoop/ledger.md` (templates in `templates/`), copy
-`templates/schedule.mjs` → `.ailoop/schedule.mjs` and
+`templates/schedule.mjs` → `.ailoop/schedule.mjs`,
+`templates/verify.mjs` → `.ailoop/verify.mjs`, and
 `templates/report.mjs` → `.ailoop/report.mjs`, and create
 `.ailoop/evidence/` for captured check output. This is the pre-flight; the
 human sees it and the drive runs unattended after.
@@ -402,7 +428,10 @@ human sees it and the drive runs unattended after.
    Also record in `oracle.md`: the **baseline gate** — the type-check / build /
    lint / test commands (from Stage 1.0's toolchain detection) that *every*
    ticket must pass regardless of what it touches, classified into fast tier
-   (per ticket) and gate tier (per phase close) per **Verification**
+   (per ticket) and gate tier (per phase close) per **Verification**. Mirror
+   the fast tier into `backlog.json` as `fastChecks` (`{name, cmd}` entries) —
+   the machine copy `verify.mjs` runs; `oracle.md` stays the human-readable
+   authority, and an amendment to one amends both
    — and the **contract identity**: the spec's path, its `spec_version` (if the
    frontmatter has one), and its sha256 content hash (`shasum -a 256`). Resume
    verifies this identity before every run; it is what makes a mid-drive spec
@@ -432,6 +461,10 @@ human sees it and the drive runs unattended after.
    tickets depend on them. Err small; you will decompose further mid-flight
    anyway. Do **not** try to enumerate every ticket for late phases perfectly —
    seed them coarsely and refine as earlier tickets teach you the shape.
+   Give every behavioral ticket its `acceptanceChecks` (the runnable mirror of
+   `acceptance`); mark pure scaffold/config tickets `scaffold: true` (skips
+   the gaming read); an obviously-mechanical ticket may carry
+   `builderModel: "haiku"`.
 
    Then write the **coverage map** into `oracle.md`: every requirement/section
    of the spec → the ticket(s) or oracle check that delivers it. A requirement
@@ -502,16 +535,26 @@ directive 6):
 
 ### 2.2 Dispatch
 
-**Model tiering — builders may downgrade, gates never do.** Builder agents run
-`model: 'sonnet'` (single-ticket dispatch and the Workflow's Build stage alike):
-the locked spec and the ticket's self-contained brief constrain them, and the
-independent re-verify catches what they get wrong. Everything that *judges* —
-the Verify stage, the integrator, the phase-oracle gate, and you the coordinator
-— stays on the session model, no override. The failure mode this split guards
-against is the reverse: a cheap judge rubber-stamping expensive (or cheap)
-workers costs loop iterations; never downgrade the gate.
+**Model tiering — measurement is scripted, judgment never downgrades.** Run
+the loop session itself on a top-tier model: the coordinator is the run's
+smallest token bucket and holds its highest-leverage decisions — judging
+fallible verdicts, retry-vs-decompose-vs-escalate, backlog integration — and
+every inline verdict (gaming reads, diagnosis, red-team, coverage) rides it.
+Builders run `model: 'sonnet'` by default (single-ticket dispatch and the
+Workflow's Build stage alike): the locked spec and the ticket's self-contained
+brief constrain them, and the independent re-verify catches what they get
+wrong. A ticket that is *obviously mechanical* — pure scaffold, config, rote
+edits with no behavioral judgment — may opt down via `"builderModel": "haiku"`,
+set on the ticket at seeding; per ticket, never globally. Mechanical
+verification costs no model at all: `verify.mjs` measures (checks, scope,
+dirty tree — exit codes decide), and the Workflow's Verify stage is a `haiku`
+relay that only runs it. The failure mode this split guards against is a cheap
+judge rubber-stamping workers: anything that *judges* — the gaming read, the
+phase-oracle interpretation, you the coordinator — stays top-tier; anything
+that *measures* is a script.
 
-- **Single ticket** → one `Agent` subagent (`model: 'sonnet'`,
+- **Single ticket** → one `Agent` subagent (`model:` the ticket's
+  `builderModel`, default `'sonnet'`;
   `isolation: 'worktree'`) — **never on the main working tree**: an
   interrupted worker must leave a branch to reconcile, not a dirty tree, and
   the scope check needs a defined diff base. Capture `baseSha`
@@ -525,18 +568,21 @@ workers costs loop iterations; never downgrade the gate.
   affected tests), commit its work on the branch in conventional format
   (those commits merge into the mainline's permanent history), and report its
   **branch** with the captured output. Then
-  **you re-verify on that branch** (full fast tier + acceptance + scope check
-  via `git diff --name-only <baseSha>..<branch>` + gaming read) before
-  accepting — its self-report is only a claim. On accept, merge the branch
+  **you re-verify on that branch**: run
+  `node .ailoop/verify.mjs --ticket <id> --dir <its worktree> --base <baseSha>`
+  (full fast tier + `acceptanceChecks` + scope + dirty-tree; evidence and diff
+  dumped), then gaming-read the dumped diff (skip only for `scaffold` tickets)
+  — its self-report is only a claim. On accept, merge the branch
   into the mainline; if the mainline moved past `baseSha` since the fork,
   re-run the fast tier on the merged tree — that is the integration gate a
   batch run would have given you.
 - **A disjoint batch** → the `build-phase` Workflow (see the template),
   passing `baseSha` (`git rev-parse HEAD` at invocation) alongside the
   tickets, frozen decisions, baseline, and phase oracle: one worker `agent()`
-  per ticket, each `isolation: 'worktree'`, a per-ticket **Verify** stage
-  pipelined behind each build, then **merge** the verified ones, then gate on
-  the merged tree (skipped when nothing merged — `oracle: null`).
+  per ticket, each `isolation: 'worktree'`, a per-ticket **Verify** relay
+  (runs `verify.mjs`) plus a **gaming read** pipelined behind each build, then
+  **merge** the verified ones, then gate on the merged tree (skipped when
+  nothing merged — `oracle: null`).
 
 Every worker is instructed to return one of:
 - `{ done: true, branch, evidence }` — built it, **added tests for new
@@ -581,7 +627,8 @@ The judgment the inner body cannot do:
   fan out one diagnosis agent per failed ticket, in parallel; the diagnoses
   are independent, and you judge their output — serializing them is pure
   wall-clock waste. Append an `attempts` entry
-  (`failed` / `hypothesis` / `fixNote`) to the ticket — the diagnosis must
+  (`failed` / `hypothesis` / `fixNote`) to the ticket — the script's `failing`
+  array is the entry's `failed` set, verbatim, and the diagnosis must
   survive compaction — then re-dispatch with the full log.
 - **Resume before re-dispatch.** Whenever the builder session is still alive
   and its work so far is sound — an honest scope stop, a flagged wrong
@@ -592,7 +639,7 @@ The judgment the inner body cannot do:
   fresh only when the session is dead/stalled, or the diagnosis indicts the
   builder's approach rather than its coverage — a gamed or wrong-headed
   attempt is never resumed. A resume is a dispatch: ledger it like any other.
-- **Gaming suspicion** (verifier flagged the diff) → you read the diff and
+- **Gaming suspicion** (the gaming read flagged the diff) → you read the diff and
   judge against the spec's intent. Gamed → failed attempt (append to
   `attempts`) **and** sharpen the acceptance that was gamed (escaped-bug rule).
   Clean → accept and note why in the ledger.
@@ -750,6 +797,12 @@ is what marks which spec is in flight.
 - **`schedule.mjs`** — the deterministic scheduler (copied from templates at
   intake). Ready sets, batches, cap/thrash breaches, phase drain, completion —
   computed, never eyeballed.
+- **`verify.mjs`** — the deterministic mechanical verifier (copied from
+  templates at intake). Dirty-tree check, full fast tier + a ticket's
+  `acceptanceChecks`, scope diff against `baseSha`, evidence + diff dump —
+  exit codes decide, never a model. The gaming read over its dumped diff is
+  the only judgment verification keeps. Doubles as the flake probe
+  (`--cmd ... --repeat N`).
 - **`report.mjs`** — the deterministic run auditor (copied from templates at
   intake). Reads the ledger's stamped entry headers + `backlog.json` and prints
   the **run audit**: wall-clock by phase, the long poles, the work breakdown.
@@ -771,8 +824,9 @@ is what marks which spec is in flight.
   header, never the prose. Timing is telemetry: a malformed stamp costs one
   unmeasured gap in the audit, never a broken loop.
 - **`evidence/`** — captured check output, one file per re-verify
-  (`T017.txt`; failed-attempt logs `T017-a2.txt`). Tickets and the ledger hold
-  pointers into it; `backlog.json` stays lean.
+  (`T017.txt`; failed-attempt logs `T017-a2.txt`), plus the dumped diff per
+  verify (`T017-diff.patch` — the gaming read's input). Tickets and the ledger
+  hold pointers into it; `backlog.json` stays lean.
 
 Update `backlog.json` after every ticket outcome and `ledger.md` after every
 judge decision.
@@ -793,10 +847,11 @@ judge decision.
       dispatch.
 - [ ] Worker ran the fast-tier baseline (full-suite step may be scoped to
       affected tests) + acceptance; new behavior has new tests, green under it.
-- [ ] **Independent re-verify** passed: FULL fast tier + the ticket's own
-      gate-tier tests + acceptance green,
+- [ ] **Independent re-verify** green via `verify.mjs`: clean tree, FULL fast
+      tier + `acceptanceChecks` (incl. the ticket's own gate-tier tests),
       touched files (diffed from `baseSha`) ⊆ declared ∪ manifest allowlist,
-      diff read for gaming — and no baseline regression.
+      no baseline regression — and the dumped diff gaming-read (skipped only
+      for `scaffold` tickets).
 - [ ] Evidence written to `.ailoop/evidence/` and pointed at — never inlined
       into `backlog.json`.
 - [ ] Workers cite locked decisions; none re-litigated.
@@ -823,8 +878,9 @@ judge decision.
 - **No token budgeting.** The main loop has no spend gauge, so a token cap
   would be enforced by guesswork — and fictional numbers in the audit trail are
   worse than no cap. The real guards are attempts and thrash;
-  cost control is model tiering (Sonnet builders, session-model gates), not
-  budget arithmetic.
+  cost control is scripted measurement (`verify.mjs`) plus model tiering
+  (top-tier judgment, Sonnet builders, Haiku only on tickets marked
+  mechanical), not budget arithmetic.
 - **Fully autonomous.** The only human touches in a healthy run
   are the intake pre-flight and the final report.
   Everything else is escalation, which by definition means the loop couldn't

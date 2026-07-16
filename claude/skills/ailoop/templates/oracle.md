@@ -37,7 +37,9 @@ let it through.
      on the merged tree at each phase close. A ticket shipping a NEW gate-tier
      test still runs THAT test itself; a ticket changing behavior an EXISTING
      gate-tier test pins re-runs that test by name. Use THIS project's real
-     commands. -->
+     commands. The fast tier is mirrored into backlog.json as fastChecks
+     ({name, cmd}) — the machine copy verify.mjs runs; this doc is the
+     human-readable authority, and an amendment to one amends both. -->
 
 Fast tier (per ticket):
 - [ ] type-check / compile: `<command>` → exit 0

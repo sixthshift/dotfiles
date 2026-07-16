@@ -1,9 +1,10 @@
 export const meta = {
   name: 'ailoop-build-phase',
-  description: 'Build a file-disjoint batch of ailoop tickets in parallel worktrees, independently verify each (checks + scope + gaming read), integrate the verified ones, and gate on the phase oracle',
+  description: 'Build a file-disjoint batch of ailoop tickets in parallel worktrees, mechanically verify each via verify.mjs, gaming-read the diffs, integrate the verified ones, and gate on the phase oracle',
   phases: [
     { title: 'Build', detail: 'one worker per ticket in its own git worktree', model: 'sonnet' },
-    { title: 'Verify', detail: 'independent agent re-runs the FULL baseline + acceptance, diffs against the fork point for undeclared files, reads the diff for gaming' },
+    { title: 'Verify', detail: 'a relay runs verify.mjs — full fast tier + acceptance checks, scope diff, dirty-tree; exit codes decide', model: 'haiku' },
+    { title: 'Gaming read', detail: 'session-model judgment over the dumped diff — skipped for scaffold tickets' },
     { title: 'Integrate', detail: 'merge only the verified worker branches; manifest conflicts resolved mechanically' },
     { title: 'Gate', detail: 'run the phase oracle on the merged tree (skipped when nothing merged)' },
   ],
@@ -11,17 +12,24 @@ export const meta = {
 
 // Invoked by the coordinator (SKILL.md Stage 2.2) ONLY for a file-disjoint batch
 // of READY tickets (the scheduler's batches[0]). For a single ticket or a coupled
-// phase, the coordinator dispatches one Agent directly (and re-verifies it
-// itself) — no fan-out.
+// phase, the coordinator dispatches one Agent directly (and runs verify.mjs +
+// the gaming read itself) — no fan-out.
+//
+// Model tiering (SKILL.md 2.2): judgment never downgrades, measurement is
+// scripted. Builders default to sonnet (per-ticket haiku opt-in for
+// obviously-mechanical tickets); the Verify stage is a haiku RELAY because the
+// determinism lives in verify.mjs, not the agent; the gaming read inherits the
+// session model.
 //
 // args: {
-//   tickets: [{ id, title, context, acceptance, files: [], attempts: [] }],  // file-DISJOINT, all ready, files NON-EMPTY
+//   tickets: [{ id, title, context, acceptance, acceptanceChecks: [], files: [],
+//               attempts: [], builderModel?, scaffold? }],  // file-DISJOINT, all ready, files NON-EMPTY
 //   baseSha: string,           // `git rev-parse HEAD`, captured by the coordinator IMMEDIATELY
 //                              // before invoking: the commit the worktrees fork from and the
-//                              // scope check's diff base — the verifier never guesses a merge-base
+//                              // scope check's diff base — verify.mjs is handed it, never guesses
 //   lockedDecisions: string,   // frozen decisions block from oracle.md, verbatim
-//   baseline: string,          // the baseline gate's FAST tier (type-check/build/lint/unit suite);
-//                              // the gate tier (e2e/slow suites) runs at phase close, not per ticket
+//   baseline: string,          // the fast tier as prose, for the BUILDER's prompt; the verifier
+//                              // runs the machine mirror (backlog.json fastChecks) via verify.mjs
 //   phaseOracle: string,       // the phase's executable checks from oracle.md
 // }
 const { tickets, baseSha, lockedDecisions, baseline, phaseOracle } = args
@@ -59,18 +67,31 @@ const BUILD_RESULT = {
   required: ['done'],
 }
 
+// verify.mjs's JSON output, relayed verbatim by the Verify runner.
 const VERIFY_RESULT = {
   type: 'object',
   additionalProperties: false,
   properties: {
+    ticket: { type: 'string' },
     verified: { type: 'boolean' },
-    failing: { type: 'array', items: { type: 'string' }, description: 'check → why it failed (empty when verified)' },
-    regressedBaseline: { type: 'boolean', description: 'true if the baseline broke even though acceptance may pass' },
-    outOfScopeFiles: { type: 'array', items: { type: 'string' }, description: 'touched paths not in the declared files nor the manifest allowlist (empty when clean)' },
-    suspectedGaming: { type: 'string', description: 'why the diff looks like it games the acceptance rather than implementing the intent; empty string if clean' },
-    evidence: { type: 'string', description: 'captured baseline + acceptance output, verbatim' },
+    dirty: { type: 'boolean', description: 'worktree had uncommitted changes — only committed work verifies' },
+    failing: { type: 'array', items: { type: 'string' }, description: "failed check NAMES — becomes the attempts entry's failed set, verbatim" },
+    outOfScopeFiles: { type: 'array', items: { type: 'string' }, description: 'touched paths not in the declared files nor the manifest allowlist' },
+    touched: { type: 'array', items: { type: 'string' } },
+    evidence: { type: 'string', description: 'path to the captured check output under .ailoop/evidence/' },
+    diff: { type: 'string', description: 'path to the dumped diff patch — the gaming read input' },
+    scriptError: { type: 'string', description: 'set ONLY when verify.mjs itself failed to run (exit 2 / crash)' },
   },
-  required: ['verified', 'failing', 'outOfScopeFiles', 'evidence'],
+  required: ['verified'],
+}
+
+const GAMING_RESULT = {
+  type: 'object',
+  additionalProperties: false,
+  properties: {
+    suspectedGaming: { type: 'string', description: 'why the diff looks like it games the acceptance rather than implementing the intent; empty string if clean' },
+  },
+  required: ['suspectedGaming'],
 }
 
 const MERGE_RESULT = {
@@ -106,12 +127,12 @@ const ORACLE_RESULT = {
   required: ['passed', 'failing', 'evidence'],
 }
 
-// ── Build → Verify (pipelined) ───────────────────────────────────────────
-// pipeline, not a barrier: each ticket's independent verify starts the moment
-// its own build finishes — fast tickets never wait for the batch's slowest
-// build. Workers run in isolated worktrees so parallel file writes cannot
-// collide; they add tests for new behavior and run the gate themselves — but
-// their result is only a claim; the Verify stage is what counts.
+// ── Build → Verify → Gaming read (pipelined) ─────────────────────────────
+// pipeline, not a barrier: each ticket's verify starts the moment its own
+// build finishes — fast tickets never wait for the batch's slowest build.
+// Workers run in isolated worktrees so parallel file writes cannot collide;
+// they add tests for new behavior and run the gate themselves — but their
+// result is only a claim; verify.mjs is what counts.
 phase('Build')
 const results = (await pipeline(
   tickets,
@@ -149,7 +170,8 @@ const results = (await pipeline(
       'ACCEPTANCE; capture their real output; (4) commit your work on your branch',
       'in conventional format — `type(scope): subject`, imperative mood, why-focused',
       'body when there is rationale worth keeping. These commits merge into the',
-      "mainline's permanent history.",
+      "mainline's permanent history. Leave NOTHING uncommitted — the verifier",
+      'fails a dirty tree.',
       '',
       'Return exactly one shape:',
       '- { done:true, branch:"<your worktree branch>", evidence } when baseline AND',
@@ -159,61 +181,68 @@ const results = (await pipeline(
       '  focused session — propose a split and STOP. Do NOT leave a half-built change.',
       '- { done:false, blocked:true, reason } if a real dependency is missing or the spec contradicts itself.',
     ].join('\n'),
-    // Workers run Sonnet: the locked spec + ticket constrain them, and the
-    // independent Verify stage catches what they get wrong. Gates never downgrade.
-    { label: `build:${t.id}`, phase: 'Build', isolation: 'worktree', schema: BUILD_RESULT, model: 'sonnet' }
+    // Builders default to Sonnet: the locked spec + ticket constrain them, and
+    // independent verification catches what they get wrong. A ticket the
+    // coordinator marked obviously-mechanical opts down via builderModel.
+    { label: `build:${t.id}`, phase: 'Build', isolation: 'worktree', schema: BUILD_RESULT, model: t.builderModel ?? 'sonnet' }
   ).then(result => ({ ticket: t, result })),
 
-  // Independent re-verify per ticket: a DIFFERENT agent re-runs the FULL
-  // baseline + acceptance on the worker's branch, diffs it against baseSha for
-  // undeclared touches, and reads the diff for gaming. The builder's
-  // self-report does not count — this does. No `model` override: gates never
-  // downgrade (a cheap judge rubber-stamping cheap workers is the failure mode
-  // the tiering exists to avoid). tooBig/blocked/dead builds skip straight
-  // through to the partition below.
+  // Mechanical verify: a RELAY agent runs verify.mjs and reports its JSON.
+  // haiku on purpose — the determinism lives in the script (full fast tier +
+  // acceptanceChecks, scope diff from baseSha, dirty-tree check, evidence +
+  // diff dump); the agent only locates the worktree and pipes. The builder's
+  // self-report does not count — the script's exit codes do.
+  // tooBig/blocked/dead builds skip straight through to the partition below.
   b => !b.result?.done ? b : agent(
     [
-      'You are an INDEPENDENT verifier. You did not build this — do not trust the',
-      "builder's report. Check out the branch below in a fresh worktree, then:",
+      'You are a RELAY, not a judge. Do exactly this and report the output.',
       '',
-      '(1) RE-RUN the BASELINE in full — even if the builder scoped its suite',
-      '    step — and the ACCEPTANCE yourself; capture real output. Exit codes',
-      "    decide pass/fail — not the builder's transcript.",
-      `(2) SCOPE CHECK: \`git diff --name-only ${baseSha}..<branch>\` — that SHA is`,
-      '    the commit this batch forked from. Every touched path must be in the',
-      `    DECLARED FILES or the manifest allowlist (${MANIFEST_ALLOWLIST}).`,
-      '    List every violation in outOfScopeFiles.',
-      '(3) GAMING READ: read the diff. Was the acceptance satisfied by implementing',
-      '    the intent, or by gaming the check — hardcoded outputs, weakened or',
-      '    deleted tests, special-cased inputs? If suspicious, say exactly why in',
-      '    suspectedGaming (empty string if clean).',
+      `1. Locate the worktree for branch ${b.result.branch || `(the worktree for ticket ${b.ticket.id} — find it via \`git worktree list\`)`}:`,
+      '   `git worktree list` from the repo root — the line whose branch matches.',
+      `   If no worktree lists it, create one: \`git worktree add .ailoop/wt-verify-${b.ticket.id} ${b.result.branch || '<branch>'}\``,
+      '   and use that path (leave it in place — the coordinator prunes at phase close).',
+      "2. If the checks need dependencies installed in that worktree, install them",
+      "   with the project's own install command.",
+      '3. From the repo root (the main tree), run:',
+      `   node .ailoop/verify.mjs --ticket ${b.ticket.id} --dir <worktree path> --base ${baseSha}`,
+      '4. Relay its JSON output as your result, VERBATIM — do not reinterpret it,',
+      '   re-run checks selectively, or fix anything. If the script itself fails to',
+      '   run (exit 2 or crash), return { verified:false, scriptError:"<its stderr>" }.',
+    ].join('\n'),
+    { label: `verify:${b.ticket.id}`, phase: 'Verify', schema: VERIFY_RESULT, model: 'haiku' }
+  ).then(v => ({ ...b, verify: v })),
+
+  // Gaming read: the one judgment verification keeps. No model override —
+  // it inherits the session model; judgment never downgrades. Skipped for
+  // scaffold tickets (nothing behavioral to game) and for anything that
+  // already failed mechanically (no point judging a red).
+  b => (!b.verify?.verified || b.ticket.scaffold) ? b : agent(
+    [
+      'You are the GAMING READ over an already-mechanically-verified ticket.',
+      'The checks passed; your question is whether they passed HONESTLY.',
       '',
-      'Fix NOTHING — you only measure.',
+      `Read the diff at ${b.verify.diff} (a patch file dumped by the verifier).`,
+      'Was the acceptance satisfied by implementing the intent, or by gaming the',
+      'check — hardcoded outputs, weakened or deleted tests, special-cased inputs?',
       '',
       `TICKET ${b.ticket.id} — ${b.ticket.title}`,
-      `BRANCH: ${b.result.branch || '(discover via git worktree list / git branch — the worktree for this ticket)'}`,
-      `DECLARED FILES: ${(b.ticket.files ?? []).join(', ')}`,
-      '',
-      'BASELINE (must pass, run in full):',
-      baseline,
-      '',
-      'ACCEPTANCE (must pass):',
+      'ACCEPTANCE (what the checks were supposed to pin):',
       b.ticket.acceptance,
       '',
-      'Return { verified, failing:[check → why], regressedBaseline, outOfScopeFiles,',
-      '         suspectedGaming, evidence:<captured output> }.',
-      'verified=true ONLY if baseline AND acceptance pass AND outOfScopeFiles is empty.',
+      'Fix NOTHING — you only judge. Suspicion does not need proof: say exactly',
+      'why in suspectedGaming and the coordinator judges against the spec.',
+      'Return { suspectedGaming } — empty string if clean.',
     ].join('\n'),
-    { label: `verify:${b.ticket.id}`, phase: 'Verify', schema: VERIFY_RESULT }
-  ).then(v => ({ ...b, verify: v }))
+    { label: `gaming:${b.ticket.id}`, phase: 'Gaming read', schema: GAMING_RESULT }
+  ).then(g => ({ ...b, gaming: g }))
 )).filter(Boolean) // a stage that threw drops its ticket to null
 
 const notDone = results.filter(b => !b.result?.done) // tooBig / blocked / dead worker → coordinator
-const verifyFailed = results.filter(b => b.result?.done && !b.verify?.verified) // re-dispatch by coordinator
+const verifyFailed = results.filter(b => b.result?.done && !b.verify?.verified) // re-dispatch by coordinator (incl. scriptError — inspect before blaming the build)
 // Gaming suspicion does not auto-fail, but a suspect is held OUT of integration:
 // the coordinator reads the diff and judges before it can merge (SKILL.md 2.3).
-const suspected = results.filter(b => b.verify?.verified && b.verify.suspectedGaming)
-const passed = results.filter(b => b.verify?.verified && !b.verify.suspectedGaming)
+const suspected = results.filter(b => b.verify?.verified && b.gaming?.suspectedGaming)
+const passed = results.filter(b => b.verify?.verified && !b.gaming?.suspectedGaming)
 
 // ── Integrate ────────────────────────────────────────────────────────────
 // Merge ONLY independently-verified, unsuspected branches. Workflow scripts have
@@ -262,8 +291,8 @@ const oracle = merge.merged.length === 0 ? null : await agent(
 return {
   built: results.map(b => ({ id: b.ticket.id, result: b.result })),
   notDone: notDone.map(b => ({ id: b.ticket.id, result: b.result })),          // tooBig / blocked / dead worker
-  verifyFailed: verifyFailed.map(b => ({ id: b.ticket.id, verify: b.verify })), // built but failed independent re-verify (incl. out-of-scope touches)
-  suspectedGaming: suspected.map(b => ({ id: b.ticket.id, branch: b.result.branch, verify: b.verify })), // checks green but diff looks gamed — coordinator judges before these may merge
+  verifyFailed: verifyFailed.map(b => ({ id: b.ticket.id, verify: b.verify })), // built but failed verify.mjs (checks, scope, dirty tree — or scriptError)
+  suspectedGaming: suspected.map(b => ({ id: b.ticket.id, branch: b.result.branch, verify: b.verify, gaming: b.gaming })), // mechanically green but diff looks gamed — coordinator judges before these may merge
   merge,
   oracle, // null when nothing merged (phase state unchanged)
 }

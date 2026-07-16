@@ -10,12 +10,23 @@
     "its recorded fork point (baseSha) and fails undeclared touches (package.json +",
     "lockfiles allowlisted for every ticket); the scheduler rejects empty files.",
     "attempts is the durable diagnosis log — one entry per failed attempt; failed is",
-    "an ARRAY of check names so the scheduler detects thrash mechanically.",
+    "an ARRAY of check names (verify.mjs's failing array, verbatim) so the scheduler",
+    "detects thrash mechanically.",
     "evidence is a POINTER into .ailoop/evidence/ — never inline captured output;",
-    "this file is re-read every loop turn."
+    "this file is re-read every loop turn.",
+    "fastChecks is the machine mirror of oracle.md's fast tier — verify.mjs runs it",
+    "on every ticket; amend it and oracle.md together.",
+    "acceptanceChecks mirrors a ticket's acceptance as runnable {name, cmd} entries",
+    "— verify.mjs executes these on top of fastChecks.",
+    "builderModel (optional) opts an obviously-mechanical ticket down to haiku;",
+    "scaffold (optional, true) marks pure scaffold/config — the gaming read is skipped."
   ],
   "project": "<project>",
   "caps": { "maxAttempts": 3, "thrash": 2 },
+  "fastChecks": [
+    { "name": "type-check", "cmd": "<command>" },
+    { "name": "unit tests", "cmd": "<command>" }
+  ],
   "tickets": [
     {
       "id": "T001",
@@ -27,6 +38,9 @@
       "origin": "spec §X.Y | decomposed from T0NN | repair: gate red after <ids>",
       "context": "Everything a cold subagent needs and nothing it doesn't: which spec sections govern this (quote the binding constraints); which locked decisions apply (cite oracle.md); what already exists (which prior tickets built what it depends on); the precise deliverable — build only this.",
       "acceptance": "The ticket-local oracle — checkable, not vibes; ON TOP OF the baseline gate in oracle.md. Prefer input→output contrast checks over artifact-existence checks (existence is the most gameable). Add tests for new behavior (skip only for pure scaffold/config).\n- `<command>` exits 0\n- <behavioral check with expected result>",
+      "acceptanceChecks": [
+        { "name": "<stable check name>", "cmd": "<command verify.mjs runs>" }
+      ],
       "attempts": [
         {
           "n": 0,
