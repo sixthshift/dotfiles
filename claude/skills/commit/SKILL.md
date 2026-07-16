@@ -7,7 +7,19 @@ description: Analyze staged changes and create focused commits. If changes span 
 
 Analyze staged changes and create focused commits. If changes span multiple concerns, split them into separate logical commits.
 
-## Instructions
+## Execution model
+
+> **If you are the subagent** (you were told to "perform the Procedure section"), skip straight to `## Procedure` — the rest of this section is not for you.
+
+Committing is mostly mechanics plus one judgment call (the split decision and message quality), all of which sit in Sonnet's range. Run it in a subagent so it doesn't burn main-loop tokens. Invoke the Agent tool **once**, then stop and relay:
+
+- `subagent_type`: general-purpose
+- `model`: sonnet
+- `prompt`: "Read ~/.claude/skills/commit/SKILL.md and perform its Procedure section against the current repo (cwd is the project root). User arguments: <$ARGUMENTS>. Follow the coding-voice commit conventions. Your final message must report which files went into which commit — nothing else is shown to the user."
+
+Do not run any git commands yourself. After the subagent returns, relay its file→commit summary.
+
+## Procedure
 
 ### Step 0: Defer to a project skill if one exists
 
@@ -110,6 +122,4 @@ refactor(utils): simplify date formatting helpers
 
 ## Arguments
 
-$ARGUMENTS
-
-If the user passed arguments (e.g., "single" or "don't split"), respect them when deciding whether to split.
+If the user passed arguments (e.g., "single" or "don't split"), respect them when deciding whether to split. As the subagent, you receive them in your dispatch prompt (`User arguments: <...>`); if that field is empty, there were none.
