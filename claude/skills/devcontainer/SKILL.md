@@ -63,6 +63,7 @@ From `templates/`, fill placeholders (`{{PROJECT}}`, port labels, optional block
 - `.devcontainer/shell-config.sh`
 - `.devcontainer/CLAUDE_CODE_USAGE.md`
 - `.devcontainer/.env.example` (and an empty-ish `.env`); verify `.env` is gitignored — add `.devcontainer/.env` to `.gitignore` if not.
+- **`.claude/settings.json` at the repo root** (not under `.devcontainer/`) — the committed project-settings home. If absent, write `{"$schema": "https://json.schemastore.org/claude-code-settings.json", "env": {"ENABLE_LSP_TOOL": "1"}}`. If it already exists, **merge** the `env.ENABLE_LSP_TOOL` key in — never clobber a collaborator's existing project settings.
 
 **Cache alignment rule:** the Dockerfile's invariant block (everything above the `--- project-specific ---` marker in the template) must be emitted **byte-identical and first** in every project. Docker's layer cache is keyed on the instruction chain, so identical leading blocks share cached layers across projects — this is deliberately a substitute for a shared base image (considered, rejected: the overlap is coincidental, not a real base concept). Project-specific lines go only below the marker, in the template's canonical order.
 
@@ -86,9 +87,10 @@ Emit these always; do not drop them even if they look optional:
 - **No `~/.ssh` mount. Ever.** Git auth comes from SSH **agent forwarding**: VS Code forwards `SSH_AUTH_SOCK` automatically when `ssh-agent` runs on the host. Keys never enter the container, so an agent running with skipped permissions cannot read or exfiltrate them. Requires `ssh-add --apple-use-keychain` (or `AddKeysToAgent yes`) on the host — documented in the usage doc.
 - **`~/.gitconfig:ro` mount** — commit identity and signing config inside the container.
 - **No raw docker socket. Ever.** `/var/run/docker.sock` in a root container is host root (a created container can bind-mount `/Users` through the Docker Desktop VM). Projects needing Docker (testcontainers) get the **DinD sidecar**: an isolated daemon at `DOCKER_HOST=tcp://docker:2375`; binds made there only see the sidecar's filesystem. Costs: the sidecar is privileged (agent can only reach its TCP API, never the container itself) and has its own image cache.
-- **`containerEnv`**: `CLAUDE_CONFIG_DIR=/root/.claude`, `IS_SANDBOX=1`, `ENABLE_LSP_TOOLS=1`.
+- **`containerEnv`**: `CLAUDE_CONFIG_DIR=/root/.claude`, `IS_SANDBOX=1`. Container-runtime facts only — the LSP gate does **not** live here. It's a project policy, equally true on the host, so it belongs in the committed `.claude/settings.json` (next).
+- **Committed `.claude/settings.json` at the repo root** — the home for project-wide Claude policy that must apply on host *and* in-container (project settings are read from the project tree regardless of `CLAUDE_CONFIG_DIR`). Emit it carrying the LSP gate `{"env": {"ENABLE_LSP_TOOL": "1"}}` — singular; the plural `ENABLE_LSP_TOOLS` is a silent no-op, absent from the Claude Code binary. This is the LSP *gate*; the language-server binary below is what it drives — the two are separate and both required.
 - **`shell-config.sh` with the `clauded` alias**, copied to `/root/.shell-config.sh` and sourced from `/root/.bashrc`.
-- **Go + mcp-language-server + typescript-language-server** — LSP integration for Claude Code; part of the standard, not an extra.
+- **Go + mcp-language-server + typescript-language-server** — the language-server binaries the LSP tool drives; part of the standard, not an extra. The gate that *activates* the tool lives in the committed `.claude/settings.json` (above), not here — binary and gate are separate.
 - **`command: sleep infinity`**, `workspaceFolder`/`working_dir` `/workspace`, workspace bind `..:/workspace:cached`.
 - **`postCreateCommand`** guards on `package.json` existing (new repos may scaffold the devcontainer before the app).
 
