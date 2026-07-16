@@ -360,8 +360,15 @@ the gap at full speed with nobody watching. Four mechanisms keep the checks
 honest. "Frozen" means never *silently* changed — not never changed:
 
 - **Red-team at intake (Stage 1.5).** Before any build spend, adversarially
-  review every seeded acceptance: *"how could a lazy builder make this pass
-  without delivering the intent?"* Every cheat found = sharpen the check.
+  review every seeded acceptance through **two lenses**, in sequence, within the
+  same agents (no extra fan-out): (1) **gaming** — *"how could a lazy builder
+  make this pass without delivering the intent?"*; (2) **instrument blindness** —
+  *"assume an honest builder: what is this check's own vantage (its DB
+  connection, auth level, what it reads) and what class of real defect is it
+  structurally unable to see?"* A check that verifies through a superuser
+  connection can't see a missing grant; one that reads the app's own echo can't
+  prove persistence; one using the admin key can't see an RLS hole. Every cheat
+  or blind spot found = sharpen the check.
 - **Mechanical amendments — self-serve.** A check wrong in letter but not
   meaning (misspelled command, wrong port/path/flag) would otherwise force a
   full-stop escalation on a typo — or tempt silent reinterpretation, which is
@@ -474,8 +481,13 @@ human sees it and the drive runs unattended after.
 
 5. **Red-team the acceptance.** Before any build spend, an adversarial pass
    over every seeded ticket (fan out a few cheap agents, one per phase's
-   tickets): *"how could a lazy builder pass this acceptance without delivering
-   the spec's intent?"* Each cheat found = sharpen the check. Prefer
+   tickets), each running **two lenses in sequence**: (1) *"how could a lazy
+   builder pass this acceptance without delivering the spec's intent?"* and
+   (2) *"assume an honest builder: what is this check's own vantage — DB
+   connection, auth level, what it reads — and what class of real defect can it
+   not see?"* (a superuser-introspection check is blind to grants; an echo-read
+   can't prove persistence; an admin-key check can't see an RLS hole). Each
+   cheat or blind spot found = sharpen the check. Prefer
    input→output contrast checks ("these 3 JDs must flip the lede differently")
    over artifact-existence checks ("file exists", "function returns") —
    existence is the most gameable form. Record the pass in the ledger.
