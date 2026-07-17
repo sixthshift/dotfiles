@@ -1,4 +1,0 @@
-interface:
-  display_name: "AI Loop for Codex"
-  short_description: "Drive locked specs to completion with Codex"
-  default_prompt: "Use $ailoop-codex to drive the locked build spec to completion."

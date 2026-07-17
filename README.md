@@ -27,7 +27,6 @@ cd ~/dotfiles
 **Tracked in git** (portable):
 - `claude/CLAUDE.md` — universal instructions, installed for Claude and Codex
 - `claude/skills/`, `claude/agents/`, `claude/hooks/` — master portable skills/agents/hooks
-- `codex/skills/ailoop-codex/` — Codex-native autonomous build loop
 - `claude/settings.json` — global preferences (model, theme, defaults)
 
 **Gitignored** (machine-specific or sensitive):
@@ -42,9 +41,10 @@ cd ~/dotfiles
 instructions and six portable skills to Codex through `~/.codex/AGENTS.md` and
 individual symlinks under `~/.agents/skills`.
 
-Claude's Workflow-based `ailoop` is deliberately excluded from Codex. Codex
-gets `ailoop-codex` instead, which preserves the aispec/`.ailoop` contract but
-uses Codex subagents and explicit Git worktrees.
+Claude's Workflow-based `ailoop` is deliberately excluded from Codex — it
+depends on the Workflow engine Codex doesn't have, and there is no Codex-native
+equivalent. Codex still gets `aispec`, so specs authored under Codex hand off to
+Claude's `ailoop` to build.
 
 ## Adding a new tool
 
