@@ -31,7 +31,7 @@ let it through.
 
 ## Baseline gate (every ticket, no exceptions)
 
-<!-- The project's standing quality gate, from Stage 1.0 toolchain detection,
+<!-- The project's standing quality gate, from intake step 0 toolchain detection,
      classified into tiers at intake. The FAST tier runs on every ticket's
      verify; the GATE tier (slow suites — e2e, live-server, minutes-long) runs
      on the merged tree at each phase close. A ticket shipping a NEW gate-tier

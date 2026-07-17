@@ -26,6 +26,11 @@ Read this whole file before acting. The value of this skill is discipline, not
 speed: a loop with a fuzzy oracle either never terminates or terminates on
 vibes and hallucinates completion. Most of your IP is the guards.
 
+Stage-local protocols live in `references/` and load at their moment, never
+before: `references/intake.md` when starting a fresh campaign (Stage 1),
+`references/termination.md` when the backlog completes. This file is the
+always-loaded core: the loop, its guards, and everything used mid-run.
+
 ## The mental model — two layers
 
 An autonomous build loop has two kinds of work that want opposite things. Never
@@ -36,35 +41,26 @@ collapse them into one.
 | Job | Which ticket is ready? Is its acceptance met? Is it too big? Are we drifting or stuck? | Build this ticket. Verify it. Report a structured result. |
 | Wants | **Judgment** — pick the next ticket, interpret failures, decide retry vs. decompose vs. escalate | **Determinism** — reproducible build, verify-gate, no improvisation |
 
-- **The backlog drives the loop.** You do not work off the spec directly. At
-  intake you seed `.ailoop/backlog.json` — a dependency-ordered queue of
-  self-contained tickets — from the spec, and from then on the loop *is* "pull
-  the next ready ticket, dispatch it, verify it, update the backlog." See
-  **The backlog** below; it is the center of this skill.
+- **The backlog drives the loop.** You do not work off the spec directly: at
+  intake you seed `.ailoop/backlog.json`, and from then on the loop *is* "pull
+  the next ready ticket → dispatch → verify → update the backlog → repeat."
+  See **The backlog** below; it is the center of this skill.
 - **One invocation runs to completion.** There is no dispatch cap: the run
   ends only when the backlog is drained and every phase oracle is green, or on
-  escalation. Hours-long runs spanning many phases are the intended shape —
-  never end a run early because it is long, the context was compacted, or many
-  dispatches have been spent. Context **will** be compacted mid-run; the
-  `.ailoop/` files, not the conversation, are the loop's memory. Anything worth
-  surviving compaction or an interruption must be written to them — a fact held
-  only in conversation is a fact the loop will eventually lose.
-- **You (the coordinator)** are the main loop executing this file. You pull
-  ready tickets, dispatch them (a single subagent, or a
-  Workflow fanning out a batch of independent ones), wait for the
-  `<task-notification>`, read the structured result, judge, update the backlog,
-  and pull the next — until the backlog is drained or
-  you must escalate.
-- **Each ticket is built by a fresh subagent.** One ticket = one cold subagent
-  with no memory of this conversation. That is deliberate: it bounds context and
-  makes progress durable. It also sets the ticket-quality bar (see the schema).
-- **Batches of independent ready tickets** fan out via a `Workflow` (see
-  `templates/build-phase.workflow.js`): one worker per ticket in its own git
+  escalation. Hours-long, multi-phase runs are the intended shape — length,
+  compaction, or dispatches spent are never reasons to stop. Context **will**
+  be compacted mid-run; the `.ailoop/` files, not the conversation, are the
+  loop's memory — a fact held only in conversation is a fact the loop will
+  eventually lose.
+- **Each ticket is built by a fresh subagent** with no memory of this
+  conversation. That is deliberate: it bounds context and makes progress
+  durable — and it sets the ticket-quality bar (see the schema). Batches of
+  independent ready tickets fan out via a `Workflow`
+  (`templates/build-phase.workflow.js`): one worker per ticket in its own git
   worktree, then merge, then gate. Deterministic, backgrounded, resumable.
-
-You do **not** need the `loop` skill. `loop` is for interval/recurring
-re-invocation; ailoop runs to completion in one invocation and is re-invoked
-only to resume after an interruption or a resolved escalation.
+- You do **not** need the `loop` skill — ailoop runs to completion in one
+  invocation and is re-invoked only to resume after an interruption or a
+  resolved escalation.
 
 ## Prime directives (non-negotiable)
 
@@ -73,10 +69,10 @@ only to resume after an interruption or a resolved escalation.
    to supply it. This is the *only* interruption allowed in a run, and it
    happens at intake — before the drive, never during.
 2. **Trust the oracle, not the builder.** A worker reporting "done" is a claim,
-   never a result — at every level. Per ticket, an **independent re-verify**
-   (baseline + acceptance + scope check + gaming read), not the builder's
-   self-report, is what counts; per phase, only a **merged-tree** oracle result
-   counts (per-worktree green is not integration-green). See **Verification**.
+   never a result — at every level. Per ticket, an **independent re-verify**,
+   not the builder's self-report, is what counts; per phase, only a
+   **merged-tree** oracle result counts (per-worktree green is not
+   integration-green). See **Verification**.
 3. **Stop before you thrash.** Hard caps on attempts per ticket, thrash
    detection across attempts. Escalate with a diagnosis rather than grinding a
    wall. Length alone is never a reason to stop — a wall is.
@@ -97,20 +93,17 @@ only to resume after an interruption or a resolved escalation.
 ## The backlog — the loop's driver
 
 `.ailoop/backlog.json` is the heart of this skill: a dependency-ordered queue
-of tickets, machine-readable **on purpose**. The loop is nothing more than:
-**pull the next ready ticket → dispatch → verify → update the backlog →
-repeat.** Everything else serves this.
+of tickets, machine-readable **on purpose**. Why backlog-driven and not
+phase-driven:
 
-Why backlog-driven and not phase-driven:
-- When you plan, you find *many* things to do at once. You cannot hold them all
-  in one context and work them all — you'd pick one and lose the rest. The
-  backlog is where the rest live so nothing is dropped and ordering is explicit.
-- Work is **decomposable on demand.** A ticket that turns out too big becomes
-  several child tickets pushed back onto the backlog — so no single context ever
-  rots trying to do too much. This is the primary defense against context rot.
-- The backlog is durable state. It survives compaction *and any interruption*:
-  the loop's position is *"what does the scheduler say,"* not
-  your memory.
+- Planning surfaces many things to do at once; one context cannot hold and
+  work them all. The backlog is where the rest live — nothing dropped,
+  ordering explicit.
+- Work is **decomposable on demand**: a too-big ticket becomes child tickets
+  pushed back onto the backlog, so no single context ever rots trying to do
+  too much. The primary defense against context rot.
+- It is durable state: the loop's position is *"what does the scheduler say,"*
+  not your memory — it survives compaction and any interruption.
 
 ### The scheduler — never compute readiness by eye
 
@@ -197,11 +190,10 @@ coordinator's in-context knowledge:
   `{ "n": 1, "failed": ["<check name>", ...], "hypothesis": "<why>", "fixNote":
   "<instruction given on re-dispatch>" }`. `failed` is an **array of check
   names**, not prose — the scheduler compares consecutive attempts' failing
-  sets to detect thrash mechanically; freeform text there would put that
-  arithmetic back on you. The log exists because compaction and interruptions
-  mean a re-dispatch may happen in a context that never saw the failure: the ticket
-  carries its own failure history the way it carries its own context. Thrash
-  detection reads this log via the scheduler, never your memory.
+  sets to detect thrash mechanically. The log exists because compaction and
+  interruptions mean a re-dispatch may happen in a context that never saw the
+  failure: the ticket carries its own failure history the way it carries its
+  own context.
 
 ### Decomposition (the anti-rot move)
 
@@ -221,10 +213,12 @@ Every decomposition follows the same bookkeeping, or the graph silently rots:
   scheduler flags stranded edges as problems, but fix them at decomposition
   time, not when the alarm fires.
 - **Children inherit the parent's `phase`** — phase drain is computed from it.
-- **Red-team the children's fresh `acceptance`** the same way intake acceptance
-  was red-teamed (Stage 1.5). Mid-flight tickets — decomposed children and
-  repair tickets — are the only ones that would otherwise skip that pass, and
-  they're born precisely where something already went sideways. Ledger the pass.
+- **Refine each child cold-start runnable** (self-contained `context`, its own
+  `acceptance`), then **red-team the fresh `acceptance`** with the two-lens
+  pass (see **When a check is wrong**). Mid-flight tickets — decomposed
+  children and repair tickets — are the only ones that would otherwise skip
+  that pass, and they're born precisely where something already went sideways.
+  Ledger the pass.
 
 ### Rules
 
@@ -251,7 +245,7 @@ builder's self-report alone — confirms three things:
 1. **Baseline (every ticket, no exceptions).** The project's standing quality
    gate, defined once in `oracle.md` and applied to *every* ticket regardless of
    what it touched. Detect the exact commands from the project's manifest at
-   intake (Stage 1.0) and classify each into a tier:
+   intake (intake step 0) and classify each into a tier:
    - **Fast tier — runs per ticket:** type-check/compile, build, lint, and the
      full unit-test suite. This is the immediate regression net: a ticket that
      breaks a previously-green unit test is caught at its own verify, not at
@@ -278,14 +272,12 @@ builder's self-report alone — confirms three things:
    as the build proceeds. Exempt only pure scaffold/config tickets with no
    behavior to test, and say so in the ticket.
 
-The builder runs all of this itself and returns the evidence — but its word is
-a **claim**. The authoritative signal is the **independent re-verify**, and it
-splits by kind: the *measurement* is `verify.mjs` (copied from templates at
-intake) — a script, because exit codes and set arithmetic need no model — and
-the *judgment* is the gaming read over the diff the script dumps. In the
-fan-out Workflow the Verify stage is a cheap relay that runs the script, with
-a session-model gaming read pipelined behind it; for a single-ticket dispatch
-you run the script and read the diff yourself. What the re-verify covers:
+The independent re-verify splits by kind: the *measurement* is `verify.mjs`
+(copied from templates at intake) — a script, because exit codes and set
+arithmetic need no model — and the *judgment* is the gaming read over the diff
+the script dumps. In the fan-out Workflow the Verify stage is a cheap relay
+that runs the script, with a session-model gaming read pipelined behind it;
+for a single-ticket dispatch you run the script and read the diff yourself.
 
 - **`verify.mjs` measures (mechanical, no model).** Run from the repo root
   against the worker's worktree
@@ -296,14 +288,13 @@ you run the script and read the diff yourself. What the re-verify covers:
   where the builder scoped its suite (a ticket with its own gate-tier tests
   carries them in `acceptanceChecks`); **scope-checks**
   `git diff --name-only <baseSha>..HEAD` against the declared `files` ∪
-  manifest allowlist (`package.json` + lockfiles — any ticket may add a
-  dependency; an undeclared touch **fails the ticket** with the overflow
-  listed — this is what lets the parallelism scheduler trust `files`); and
-  dumps the evidence and the diff patch into `.ailoop/evidence/`. Its
-  `failing` array is stable check *names* — it becomes the `attempts` entry's
-  `failed` set, verbatim. `baseSha` is the fork point you captured
-  (`git rev-parse HEAD`) immediately before dispatch — the script is handed
-  it, never left to guess a merge-base.
+  manifest allowlist (an undeclared touch **fails the ticket** with the
+  overflow listed — this is what lets the parallelism scheduler trust
+  `files`); and dumps the evidence and the diff patch into
+  `.ailoop/evidence/`. Its `failing` array is stable check *names* — it
+  becomes the `attempts` entry's `failed` set, verbatim. `baseSha` is the fork
+  point you captured (`git rev-parse HEAD`) immediately before dispatch — the
+  script is handed it, never left to guess a merge-base.
 - **Gaming read (judgment — never downgraded).** Read the dumped diff and ask:
   was the acceptance satisfied by implementing the intent, or by gaming the
   check — hardcoded outputs, weakened or deleted tests, special-cased inputs?
@@ -359,20 +350,23 @@ the spec meant — and wherever those two differ, an autonomous loop drives into
 the gap at full speed with nobody watching. Four mechanisms keep the checks
 honest. "Frozen" means never *silently* changed — not never changed:
 
-- **Red-team at intake (Stage 1.5).** Before any build spend, adversarially
-  review every seeded acceptance through **two lenses**, in sequence, within the
-  same agents (no extra fan-out): (1) **gaming** — *"how could a lazy builder
-  make this pass without delivering the intent?"*; (2) **instrument blindness** —
-  *"assume an honest builder: what is this check's own vantage (its DB
-  connection, auth level, what it reads) and what class of real defect is it
-  structurally unable to see?"* A check that verifies through a superuser
-  connection can't see a missing grant; one that reads the app's own echo can't
-  prove persistence; one using the admin key can't see an RLS hole. Every cheat
-  or blind spot found = sharpen the check.
+- **Red-team every acceptance before build spend** — at intake for seeded
+  tickets (intake step 5), at creation for decomposed children and repair
+  tickets. **Two lenses, in sequence, within the same agents** (no extra
+  fan-out): (1) **gaming** — *"how could a lazy builder make this pass without
+  delivering the intent?"*; (2) **instrument blindness** — *"assume an honest
+  builder: what is this check's own vantage (its DB connection, auth level,
+  what it reads) and what class of real defect is it structurally unable to
+  see?"* A check that verifies through a superuser connection can't see a
+  missing grant; one that reads the app's own echo can't prove persistence;
+  one using the admin key can't see an RLS hole. Every cheat or blind spot
+  found = sharpen the check. Ledger the pass.
 - **Mechanical amendments — self-serve.** A check wrong in letter but not
   meaning (misspelled command, wrong port/path/flag) would otherwise force a
   full-stop escalation on a typo — or tempt silent reinterpretation, which is
   worse. Fix `oracle.md` yourself, with a ledger entry citing the evidence.
+  (The fast tier is mirrored between `oracle.md` and `backlog.json`'s
+  `fastChecks` — an amendment to one amends both.)
 - **Semantic amendments — never self-serve.** Any change to *what behavior
   counts as done* escalates, always. Weakening a check to get a stuck ticket
   through is the loop marking its own homework.
@@ -384,233 +378,18 @@ honest. "Frozen" means never *silently* changed — not never changed:
 
 ---
 
-## Stage 0 — Build engine (every invocation, before Stage 1 and before Resume)
+## Stage 1 — Intake (first invocation only)
 
-The builders can run on Claude (default) or on **codex** (`codex exec`, GPT-5.6
-tier family). This is a **per-invocation switch the human owns**, not a contract
-decision: you re-read it every invocation and never persist it as identity. The
-human chooses by how they invoke —
+`.ailoop/` absent → this invocation starts the campaign: **read
+`references/intake.md` and follow it** before any other action. It locates the
+locked spec, derives the executable per-phase oracle and the baseline tiers,
+enforces the refuse-to-start gate, seeds the backlog, red-teams every
+acceptance, sets the caps, gitignores the campaign, and reports the pre-flight
+to the human. Intake is the only stage that may interrupt the human (Prime
+directive 1).
 
-- `ailoop` (no engine token) → **Claude engine.** Builders are `sonnet`
-  (mechanical tickets `haiku`), exactly as **2.2** describes. Nothing to do here;
-  go to Stage 1 / Resume.
-- `ailoop codex` (the token `codex` anywhere in the invocation args) → **codex
-  engine.** Do the three steps below before any build spend.
-
-**Why swap builders but not judges.** Codex builds; Claude judges. The Build
-stage runs on codex; the *independent verify relay, the gaming read, integrate,
-gate, and you the coordinator all stay Claude* — a different vendor building than
-judging is the entire point (a judge sharing the builder's blind spots
-rubber-stamps them). The tier mapping mirrors the Claude tiers it replaces:
-
-| Build role | Claude engine | codex engine |
-|---|---|---|
-| Builder (default) | `sonnet` | `gpt-5.6-terra` (effort high) |
-| Mechanical opt-down (`builderModel: "haiku"`) | `haiku` | `gpt-5.6-luna` (effort medium) |
-| Verify relay · gaming read · integrate · gate · coordinator | Claude | **Claude (unchanged)** |
-
-Codex reaches the builder only through a **relay**: Workflow scripts have no
-shell, so a cheap `haiku` Claude agent (in the Workflow-managed worktree) drives
-`codex exec` and relays its schema-validated result. The relay judges nothing —
-terra/luna do the thinking inside codex.
-
-**On `ailoop codex`:**
-
-1. **Preflight `codex exec` first — before Stage 1 / Resume, before touching any
-   state.** Codex is **assumed already authenticated** on this machine — the loop
-   never runs `codex login` (it is an interactive flow with no place in an
-   unattended run). Preflight only *checks* that assumption and everything else.
-   Run a trivial timeboxed call against the builder model, e.g.:
-   ```
-   codex exec -m gpt-5.6-terra --dangerously-bypass-approvals-and-sandbox \
-     --skip-git-repo-check -c model_reasoning_effort=low \
-     'Reply with the single word: ok'
-   ```
-   Exit 0 with a sane final message → codex is available. **Any failure**
-   (not installed, **not logged in**, the gated model not accessible to this
-   account, no network) → **hard early-exit** (see the rule below): report the
-   failure — if it is an auth error, say "codex is not logged in — run `codex
-   login` and re-invoke" — and stop. Do not attempt to log in, do not intake, do
-   not dispatch, do not create `.ailoop/`.
-2. **Then, once `.ailoop/` exists** — Stage 1 creates it on a fresh run (fold this
-   into its template-copy step); it already exists on Resume — do two things:
-   - **Write the codex output schema.** Copy `templates/codex-build-schema.json` →
-     `.ailoop/codex-build-schema.json`. Its **absolute** path is the
-     `codexSchemaPath` you hand the Workflow (and single-ticket relay); `codex exec
-     --output-schema` validates each build's final message against it. (On a Claude
-     run this file is simply absent — harmless.)
-   - **Ledger the engine** in the run header: engine (codex), the models
-     (terra/luna), and the preflight result. Provenance is architectural here — a
-     resumed run may legitimately switch engines between invocations, and only the
-     ledger records which tickets were built by which. On a Claude run, ledger the
-     engine too, for symmetry.
-
-   Do NOT create `.ailoop/` in Stage 0 on a fresh run — its existence is the Resume
-   signal (Stage 1.0). Preflight is the only pre-`.ailoop/` action.
-
-**The early-exit rule (codex only) — never a silent fall-back.** Any codex
-*execution* failure is a **hard stop of the whole loop**, with `.ailoop/`
-preserved:
-
-- at **preflight** (above), or
-- **mid-run** — a Build relay returns `engineError` (the Workflow surfaces it as
-  a top-level `engineError`; a single-ticket relay returns it directly). This
-  covers *transient* failures too (HTTP 429, timeout): the chosen policy is
-  early-exit on the first one, not retry.
-
-On a hard stop: report *"codex unavailable at \<preflight | ticket T\>: \<reason\>"*
-and the explicit human choice — fix codex and re-invoke `ailoop codex` to resume,
-**or** invoke plain `ailoop` to continue the remaining backlog on Claude. Never
-switch engines yourself; a run that silently went half-sonnet would misrepresent
-what built it.
-
-**What is NOT an engine failure:** a codex build that *ran* and produced a branch
-which then *fails verification* (red checks, out-of-scope files, gaming) — or one
-that exited cleanly but *left the tree dirty* — is a **normal red**, diagnosed and
-re-dispatched like any failed build (2.3), never a hard stop. `engineError` means
-codex could not execute, full stop.
-
-**Narrow the fan-out on codex.** The early-exit-on-first-transient rule turns a
-wide parallel batch into a liability: codex model access is gated/rate-limited,
-and one 429 among sixteen concurrent `codex exec` calls kills the whole run. So on
-the codex engine, dispatch **small batches** — take only the first few disjoint
-tickets from the scheduler's `batches[0]` (≈3 at a time) rather than the whole
-set, and let the loop come back for the rest. On the Claude engine, fan out the
-full batch as before. This is coordinator policy, not a knob — tune the width down
-further if you see rate-limit stops, up if the account's limits are generous.
-
----
-
-## Stage 1 — Intake & Oracle Contract
-
-Do this once, on the first invocation only (see **Resume** for re-invocations
-after an interruption). Produce `.ailoop/oracle.md`, `.ailoop/backlog.json`, and
-`.ailoop/ledger.md` (templates in `templates/`), copy
-`templates/schedule.mjs` → `.ailoop/schedule.mjs`,
-`templates/verify.mjs` → `.ailoop/verify.mjs`,
-`templates/report.mjs` → `.ailoop/report.mjs`,
-`templates/timing.mjs` → `.ailoop/timing.mjs` (and, on the codex engine only,
-`templates/codex-build-schema.json` → `.ailoop/codex-build-schema.json` per
-Stage 0), and create
-`.ailoop/evidence/` for captured check output and per-ticket sidecars. This is the pre-flight; the
-human sees it and the drive runs unattended after.
-
-0. **Locate the spec.** `.ailoop/` already exists → this is a resume, and
-   `oracle.md`'s contract identity names the spec — never re-pick (see
-   **Resume**). Otherwise use the path the user gave, or look in `specs/` for
-   `status: locked` frontmatter (`draft` specs are invisible here; `done` are
-   retired legacy):
-   - **exactly one locked** → that is the contract;
-   - **several locked** → **ask which** (AskUserQuestion). Ideally only one
-     spec is locked at a time — a spec queued behind another campaign goes
-     stale waiting — and picking the campaign is intent, never defaulted.
-     The `.ailoop/` created at intake is what marks the chosen one active
-     from then on;
-   - **none locked** (drafts only, nothing, or only a legacy root
-     `SPEC.md`/`PLAN.md`) → **refuse to start** — a draft goes back to
-     `/aispec` to finish; a legacy or ambiguous document is a stop-and-ask,
-     never a guess. Also detect the project's own
-   toolchain (type-check / test / build commands, package manager) from its
-   manifest; the oracle's checks must use *this* project's commands, not
-   assumed ones.
-
-1. **Read the entire spec.** Extract, verbatim where possible:
-   - **Build order / phases.** Respect the spec's own phasing and de-risk order
-     — do not invent your own plan. (A good spec puts the riskiest phase first;
-     honor that.)
-   - **Locked decisions.** Stack, data model, architecture, "do not add X"
-     lists. These are frozen — workers must never re-litigate them. Copy them
-     into the oracle doc so every worker prompt can cite them.
-   - **Out-of-scope list** → the scope tripwire.
-
-2. **Derive the per-phase oracle.** For each phase, write the *executable*
-   checks that mean "this phase is done." Each check is a command with an
-   expected result, or a scripted acceptance test. Prefer, in order:
-   - build/type-check passes (e.g. `bun run check`),
-   - the service boots and a health endpoint responds,
-   - a **behavioral** acceptance test the spec names explicitly (the sharpest
-     kind — e.g. "given these 3 contrasting inputs, the output must differ in
-     *this* way"). Write it as a runnable harness, not a vibe.
-
-   Also record in `oracle.md`: the **baseline gate** — the type-check / build /
-   lint / test commands (from Stage 1.0's toolchain detection) that *every*
-   ticket must pass regardless of what it touches, classified into fast tier
-   (per ticket) and gate tier (per phase close) per **Verification**. Mirror
-   the fast tier into `backlog.json` as `fastChecks` (`{name, cmd}` entries) —
-   the machine copy `verify.mjs` runs; `oracle.md` stays the human-readable
-   authority, and an amendment to one amends both
-   — and the **contract identity**: the spec's path, its `spec_version` (if the
-   frontmatter has one), and its sha256 content hash (`shasum -a 256`). Resume
-   verifies this identity before every run; it is what makes a mid-drive spec
-   change detectable instead of silent.
-
-3. **The refuse-to-start gate.** Stop and ask the human if either:
-   - a phase's oracle is not executable **as written** (hand-wavy / no runnable
-     check) — a full autonomous run with a fuzzy oracle is the single most
-     dangerous configuration this skill can be in; **or**
-   - the oracle is well-defined but its **environment preconditions aren't
-     met** — the checks can't actually run here. Probe these at intake: required
-     API keys/secrets, network access, a git repo (worktree fan-out needs one),
-     runtimes/toolchain, and any runtime discrepancy between the spec's locked
-     stack and what's installed. A verifiable-in-principle oracle you cannot run
-     *now* is not a green light.
-
-4. **Seed the backlog.** Turn each phase into tickets in `.ailoop/backlog.json`,
-   each sized to one focused subagent session and written cold-start runnable
-   (full schema above), each tagged with its `phase` and a **non-empty**
-   `files` declaration **anchored in evidence**: every declared path either
-   exists and demonstrably hosts the behavior (grep for it; cite the anchor in
-   `context`) or is an explicit create. Never infer what the codebase probably
-   calls things — a guessed home is a wasted dispatch when the builder
-   discovers the real one, and it is the single most repeated footprint bug in
-   practice. Wire `depends_on` so the graph encodes the spec's
-   de-risk order — the riskiest phase's tickets come first and downstream
-   tickets depend on them. Err small; you will decompose further mid-flight
-   anyway. Do **not** try to enumerate every ticket for late phases perfectly —
-   seed them coarsely and refine as earlier tickets teach you the shape.
-   Give every behavioral ticket its `acceptanceChecks` (the runnable mirror of
-   `acceptance`); mark pure scaffold/config tickets `scaffold: true` (skips
-   the gaming read); an obviously-mechanical ticket may carry
-   `builderModel: "haiku"`.
-
-   Then write the **coverage map** into `oracle.md`: every requirement/section
-   of the spec → the ticket(s) or oracle check that delivers it. A requirement
-   with no entry gets a ticket now or an explicit "deferred" line — silence in
-   this map is how an under-derived intake finishes an incomplete build with
-   every check green. Update the map as tickets decompose.
-
-5. **Red-team the acceptance.** Before any build spend, an adversarial pass
-   over every seeded ticket (fan out a few cheap agents, one per phase's
-   tickets), each running **two lenses in sequence**: (1) *"how could a lazy
-   builder pass this acceptance without delivering the spec's intent?"* and
-   (2) *"assume an honest builder: what is this check's own vantage — DB
-   connection, auth level, what it reads — and what class of real defect can it
-   not see?"* (a superuser-introspection check is blind to grants; an echo-read
-   can't prove persistence; an admin-key check can't see an RLS hole). Each
-   cheat or blind spot found = sharpen the check. Prefer
-   input→output contrast checks ("these 3 JDs must flip the lede differently")
-   over artifact-existence checks ("file exists", "function returns") —
-   existence is the most gameable form. Record the pass in the ledger.
-
-6. **Set the caps.** In `backlog.json`'s `caps`: per-ticket max attempts
-   (default 3) and the thrash threshold (a ticket's failing set doesn't shrink
-   across 2 attempts → escalate; the scheduler computes this from the
-   `attempts` log). There is no cap on total dispatches — the run goes to
-   completion. Snapshot the caps in the ledger run header.
-
-7. **Keep the campaign out of git.** `.ailoop/` and `specs/` are untracked by
-   design — campaign state, noise in the project's history. Ensure
-   `.gitignore` covers both (add the entries if missing). The run's durable
-   record is the merged code, its tests, and the workers' branch commits;
-   the rare commit you author on the mainline yourself goes through the
-   **`commit` skill**. Accepted cost, on the record: disk holds the
-   campaign's only copy — a `git clean -fdx` mid-run wipes the loop's memory
-   (worker branches survive; a re-intake reconciles).
-
-Report the intake to the user as a short pre-flight: the phase→oracle map, the
-seeded backlog (ticket count + the first few ready tickets + the dependency
-spine), the caps, the red-team findings, and any oracle you had to ask them to
-supply. Then drive.
+`.ailoop/` present → a previous run already did intake; never re-pick the spec
+(`oracle.md`'s contract identity names it) — see **Resume**.
 
 ---
 
@@ -647,61 +426,39 @@ directive 6):
 
 ### 2.2 Dispatch
 
-**Model tiering — measurement is scripted, judgment never downgrades.** Run
-the loop session itself on a top-tier model: the coordinator is the run's
-smallest token bucket and holds its highest-leverage decisions — judging
-fallible verdicts, retry-vs-decompose-vs-escalate, backlog integration — and
-every inline verdict (gaming reads, diagnosis, red-team, coverage) rides it.
-Builders run `model: 'sonnet'` by default (single-ticket dispatch and the
-Workflow's Build stage alike): the locked spec and the ticket's self-contained
+**Model tiering — judgment never downgrades, measurement is scripted.** The
+coordinator (you) runs top-tier: it holds the run's highest-leverage decisions
+and every inline verdict (gaming reads, diagnosis, red-team, coverage).
+Builders default `sonnet` — the locked spec and the ticket's self-contained
 brief constrain them, and the independent re-verify catches what they get
-wrong. A ticket that is *obviously mechanical* — pure scaffold, config, rote
-edits with no behavioral judgment — may opt down via `"builderModel": "haiku"`,
-set on the ticket at seeding; per ticket, never globally. Mechanical
-verification costs no model at all: `verify.mjs` measures (checks, scope,
-dirty tree — exit codes decide), and the Workflow's Verify stage is a `haiku`
-relay that only runs it. The failure mode this split guards against is a cheap
-judge rubber-stamping workers: anything that *judges* — the gaming read, the
-phase-oracle interpretation, you the coordinator — stays top-tier; anything
-that *measures* is a script.
+wrong; an obviously-mechanical ticket may opt down via `"builderModel":
+"haiku"`, set at seeding, per ticket, never globally. Mechanical verification
+costs no model at all: `verify.mjs` measures, and the Workflow's Verify stage
+is a `haiku` relay that only runs it. The failure mode this split guards
+against is a cheap judge rubber-stamping workers: anything that *judges* stays
+top-tier; anything that *measures* is a script.
 
-**On the codex engine (Stage 0), only the builder tier changes:** the Build
-stage runs on `gpt-5.6-terra` (mechanical tickets `gpt-5.6-luna`) via the haiku
-codex relay; verify, gaming read, integrate, gate, and you stay Claude. Pass
-`builderEngine: 'codex'` and `codexSchemaPath` (the absolute path to
-`.ailoop/codex-build-schema.json`) into the Workflow — and into the single-ticket
-relay below. A relay's `engineError` is a **hard-exit** (2.3 / Stage 0), never a
-sonnet fall-back.
-
-- **Single ticket** → **Claude engine:** one `Agent` subagent (`model:` the
-  ticket's `builderModel`, default `'sonnet'`; `isolation: 'worktree'`).
-  **Codex engine:** one `haiku` `Agent` relay (`isolation: 'worktree'`) driving
-  `codex exec` on the ticket brief — same relay shape the Workflow uses; on
-  `engineError` hard-exit. Either way **never on the main working tree**: an
-  interrupted worker must leave a branch to reconcile, not a dirty tree, and
-  the scope check needs a defined diff base. Capture `baseSha`
-  (`git rev-parse HEAD`) immediately before dispatch. The prompt is the
-  ticket's `context` + `acceptance` + the baseline gate + the frozen locked
-  decisions + the declared `files` (touch only those, plus manifest/lockfile
-  for dependencies) + **the full `attempts` log if this is a retry** — a fresh
-  session must never re-diagnose from scratch. It must build, add tests for
-  new behavior, run the fast-tier baseline + acceptance (it may scope the
-  full-suite step to
-  affected tests), commit its work on the branch in conventional format
-  (those commits merge into the mainline's permanent history), and report its
-  **branch** with the captured output. Then
-  **you re-verify on that branch**: run
-  `node .ailoop/verify.mjs --ticket <id> --dir <its worktree> --base <baseSha>`
-  (full fast tier + `acceptanceChecks` + scope + dirty-tree; evidence and diff
-  dumped), then gaming-read the dumped diff (skip only for `scaffold` tickets)
-  — its self-report is only a claim. On accept, merge the branch
-  into the mainline; if the mainline moved past `baseSha` since the fork,
-  re-run the fast tier on the merged tree — that is the integration gate a
-  batch run would have given you.
+- **Single ticket** → one `Agent` subagent (`model:` the ticket's
+  `builderModel`, default `'sonnet'`; `isolation: 'worktree'`) — **never on
+  the main working tree**: an interrupted worker must leave a branch to
+  reconcile, not a dirty tree, and the scope check needs a defined diff base.
+  Capture `baseSha` (`git rev-parse HEAD`) immediately before dispatch. The
+  prompt is the ticket's `context` + `acceptance` + the baseline gate + the
+  frozen locked decisions + the declared `files` (touch only those, plus
+  manifest/lockfile for dependencies) + **the full `attempts` log if this is a
+  retry** — a fresh session must never re-diagnose from scratch. It must
+  build, add tests for new behavior, run the fast-tier baseline + acceptance
+  (it may scope the full-suite step to affected tests), commit its work on the
+  branch in conventional format (those commits merge into the mainline's
+  permanent history), and report its **branch** with the captured output. Then
+  **you re-verify on that branch per Verification**: run `verify.mjs` against
+  the worktree, gaming-read the dumped diff. On accept, merge the branch into
+  the mainline; if the mainline moved past `baseSha` since the fork, re-run
+  the fast tier on the merged tree — that is the integration gate a batch run
+  would have given you.
 - **A disjoint batch** → the `build-phase` Workflow (see the template),
   passing `baseSha` (`git rev-parse HEAD` at invocation) alongside the
-  tickets, frozen decisions, baseline, and phase oracle — plus, on the codex
-  engine, `builderEngine: 'codex'` and `codexSchemaPath`: one worker `agent()`
+  tickets, frozen decisions, baseline, and phase oracle: one worker `agent()`
   per ticket, each `isolation: 'worktree'`, a per-ticket **Verify** relay
   (runs `verify.mjs`) plus a **gaming read** pipelined behind each build, then
   **merge** the verified ones, then gate on the merged tree (skipped when
@@ -722,8 +479,8 @@ anyway — none of it touches in-flight tickets:
 - **Refine the next frontier.** Late-phase tickets were seeded coarsely on
   purpose; sharpen the `context`/`acceptance` of tickets the in-flight batch is
   about to unblock, using what finished tickets taught you.
-- **Red-team upcoming acceptance early.** Fan out the Stage 1.5-style
-  adversarial pass over soon-to-be-ready tickets now, not at dispatch time —
+- **Red-team upcoming acceptance early.** Fan out the two-lens adversarial
+  pass over soon-to-be-ready tickets now, not at dispatch time —
   decomposed children and repair tickets especially, so their mandatory
   red-team never sits on the critical path.
 - **Coverage map and ledger upkeep.**
@@ -735,13 +492,11 @@ resource.
 
 ### 2.3 Judge each result
 The judgment the inner body cannot do:
-- **`done` + independent re-verify green** (baseline + acceptance pass, no
-  out-of-scope files, no credible gaming suspicion) **+ in scope** → mark the
-  ticket `done`, write the **re-verify** evidence to
-  `.ailoop/evidence/<id>.txt` and store the pointer on the ticket, update the
-  backlog. This may unblock downstream tickets. **Then capture the per-ticket
-  sidecars now** (see **Capture at accept** below) — this is the only moment the
-  worker's transcript still exists.
+- **`done` + independent re-verify green + in scope** → mark the ticket
+  `done`, write the **re-verify** evidence to `.ailoop/evidence/<id>.txt` and
+  store the pointer on the ticket, update the backlog. **Then capture the
+  per-ticket sidecars now** (2.3b) — this is the only moment the worker's
+  transcript still exists.
 - **re-verify red** — acceptance failed, the ticket **regressed the baseline**,
   OR it **touched undeclared files** → the ticket failed. A failing check the
   ticket plausibly didn't touch goes through the flake discriminator first
@@ -769,10 +524,8 @@ The judgment the inner body cannot do:
   `attempts`) **and** sharpen the acceptance that was gamed (escaped-bug rule).
   Clean → accept and note why in the ledger.
 - **`tooBig`** → mark the parent `decomposed`, push the proposed child tickets
-  onto the backlog with dependencies, and do the decomposition bookkeeping
-  (see **Decomposition**): rewire the parent's dependents onto the children,
-  give children the parent's `phase`, refine their `context`/`acceptance` so
-  each is cold-start runnable, and red-team the fresh acceptance. This is
+  onto the backlog, and do the full bookkeeping in **Decomposition** (rewire
+  dependents, inherit `phase`, refine + red-team the children). This is
   expected and healthy, not a failure.
 - **`blocked`** → if the missing dependency is a ticket you can order, add/fix
   the edge and requeue. If it's a footprint gap — the declared home is wrong
@@ -797,13 +550,6 @@ The judgment the inner body cannot do:
   strengthens whichever acceptance let the interaction slip — and its own
   fresh acceptance gets red-teamed before dispatch, like any mid-flight ticket.
 - **Scope tripwire hit** → halt, report; do not "fix" it by building more.
-- **`engineError`** (codex engine only — the Workflow's top-level `engineError`,
-  or a single-ticket relay's `engineError`) → **hard-exit the whole loop** per
-  Stage 0: codex could not execute. Do NOT re-dispatch the ticket, do NOT switch
-  it to sonnet. Any tickets the same batch already built, verified, and merged
-  are kept (state preserved); you simply dispatch nothing further. Report codex
-  unavailable and the human's resume-or-switch choice. (A codex build that *ran*
-  and failed verification is a normal red above, not this.)
 
 When the scheduler's `phasesDrained` shows a phase with no live tickets left —
 never your own tally of the backlog — run the **baseline's gate tier** and that
@@ -816,45 +562,27 @@ green, prune: delete the merged worker branches and `git worktree prune`
 
 ### 2.3b Capture at accept — the per-ticket dossier
 
-The ledger records *decisions*; it deliberately stays lean (it is re-read every
+The ledger records *decisions* and deliberately stays lean (it is re-read every
 loop turn). The richer per-ticket record — how long, how expensive, what was
-learned — lives in **`evidence/<id>.<kind>.json` sidecars**, and it must be
-written **at accept, not at termination**. Why: the sidecars derive from the
-worker's transcript, and transcripts are **ephemeral — the harness reaps them on
-its own clock, often mid-run**. By the time the run closes, the early tickets'
-transcripts are already gone. Accept is the only moment the data still exists.
-`report.mjs` reads the sidecars, never a transcript.
-
-The convention is a **contract, not a fixed schema**: a facet is
-`evidence/<id>.<kind>.json`; `report.mjs` globs `<id>.*.json` and merges whatever
-it finds (known kinds get a tuned line, unknown kinds are dumped compact — so a
-new facet is a new file, never a code change). Write these on every accept:
+learned — lives in **`evidence/<id>.<kind>.json` sidecars**, written **at
+accept, never at termination**: they derive from the worker's transcript, and
+transcripts are **ephemeral — the harness reaps them on its own clock, often
+mid-run**. Accept is the only moment the data still exists. `report.mjs` reads
+the sidecars, never a transcript, and globs `<id>.*.json` — a new facet worth
+capturing later is a new file, never a code change. Write these on every
+accept:
 
 - **`<id>.timing.json`** — run
   `node .ailoop/timing.mjs --ticket <id> <transcript-path> [<more paths>]`
-  **immediately on accept**, passing the worker's transcript(s) (build + any
-  verify/gaming + a resume all aggregate). It writes the activity split
-  (deps / implementation / tests / typecheck / db / **reasoning** / …). The
-  transcript path is the `output-file` from the `<task-notification>` (direct
-  dispatch) or the workflow's `agent-<id>.jsonl`. The dominant bucket is almost
-  always `reasoning` — that is the model thinking and generating code, not test
-  runs; naming it is the point. **On the codex engine the split is not
-  meaningful** — the transcript is the haiku relay's (shell + file ops), and
-  codex's real implementation/reasoning ran in a subprocess it can't see. Do not
-  present a relay-derived split as the ticket's work: record the ticket's
-  wall-clock from the ledger dispatch stamps and mark the activity split
-  unavailable (codex-internal) rather than fake one.
+  immediately on accept, passing the worker's transcript(s) (build + any
+  verify/gaming + a resume all aggregate). The transcript path is the
+  `output-file` from the `<task-notification>` (direct dispatch) or the
+  workflow's `agent-<id>.jsonl`. It writes the activity split — and the
+  dominant bucket is almost always `reasoning`: the model thinking and
+  generating code, not test runs; naming it is the point.
 - **`<id>.cost.json`** — `{ tokens, agents, dispatches }`. `tokens` is
   `subagent_tokens` from the notification (sum across a ticket's dispatches);
-  `agents`/`dispatches` you already know. Free at accept, gone later. **On the
-  codex engine this is a trap:** `subagent_tokens` counts only the haiku relay,
-  not codex's spend — the real work happened in a subprocess the harness can't
-  see. Use the relay's returned **`codexUsage`** (`built[].result.codexUsage`
-  from the Workflow, or the single-ticket relay's return) for the token figure,
-  and record `{ engine:"codex", model, codexUsage, relayTokens: subagent_tokens }`
-  so the dossier reflects codex's real cost. Absent `codexUsage` (no usage event
-  in the stream), say so — never substitute the relay figure as if it were the
-  build's.
+  `agents`/`dispatches` you already know. Free at accept, gone later.
 - **`<id>.findings.json`** — `{ worker, rationale, amendments, escaped_bugs }`.
   The worker's notable finding (from its result), your one-line accept rationale,
   and any oracle amendment or escaped-bug this ticket triggered. This is the
@@ -864,8 +592,7 @@ new facet is a new file, never a code change). Write these on every accept:
   gaming-read verdict and scope result, if worth freezing beyond the ledger.
 
 Same rule as check output: sidecars are the bulk home; `backlog.json` stays lean
-(the ticket's `evidence` field still points at `<id>.txt`). New facet worth
-capturing later → new `<id>.<kind>.json` kind; nothing else changes.
+(the ticket's `evidence` field still points at `<id>.txt`).
 
 ### 2.4 Enforce the caps
 **Before every re-dispatch** (per ticket, read from the scheduler's
@@ -892,62 +619,22 @@ A run ends one of two ways — length, compaction, or dispatches spent are never
 endings. (An *interrupted* run — killed session, crash — is not an ending
 either: the next invocation picks it up from `.ailoop/`; see **Resume**.)
 
-1. **Backlog drained (`complete: true`) and every phase oracle green** → run
-   the **coverage pass** before writing the final report: re-read the spec
-   against `oracle.md`'s coverage map — every requirement must point at a
-   `done` ticket or a green check, or sit explicitly under Cut / deferred. An
-   unmapped requirement means the build is **not** done, whatever the backlog
-   says: seed the missing tickets and keep driving. Then the **final report**:
-   - **Run audit + per-ticket dossier:** run
-     `node .ailoop/report.mjs --out specs/<spec-basename>.run-report.md` and lead
-     with its output. **The `--out` is mandatory and must point OUTSIDE
-     `.ailoop/`** (the spec folder) — `.ailoop/` is deleted seconds later, so a
-     report written inside it dies with it; this is the durable artifact that
-     outlives the campaign. The audit half is the operational glimpse a long
-     unattended run hides (wall-clock by phase active-vs-paused, the long poles,
-     the work breakdown); the dossier half is the per-ticket breakdown from the
-     `evidence/<id>.*.json` sidecars (timing split, cost, findings) — the inside
-     of each ticket, not just phase totals. It is computed from the ledger stamps
-     and the sidecars, not narrated by you; add a line or two reading where the
-     time went, but the numbers are the script's. If the dossier is empty or the
-     audit reports unmeasured gaps, say so — never paper over them with estimates
-     (an empty dossier means the accept-time capture in 2.3b was skipped).
-   - **Shipped:** what was built, keyed by phase / ticket.
-   - **Oracle evidence:** the passing check output per phase (the proof, not
-     your say-so).
-   - **Coverage:** the spec→delivery map, every requirement resolved as
-     shipped or explicitly deferred.
-   - **Backlog history:** tickets completed, decomposed, repaired — the shape
-     of the work, honestly.
-   - **Cut / deferred:** anything the spec deferred or you consciously left out.
-   - **Drift caught:** scope tripwires, retries, gamed tickets, gate-red
-     bisections, oracle amendments, flake quarantines carried as residuals —
-     plain, not smoothed over.
-
-   Then **close the campaign**: confirm the run report was written to the spec
-   folder (the `--out` above) — that is the only record that survives — flip the
-   spec's frontmatter to `status: done`, and **delete `.ailoop/`**. Its presence
-   is what marks a campaign in flight, and the next intake's spec lookup relies
-   on that invariant. The `done` spec and its `.run-report.md` stay on disk
-   (untracked) until the next `/aispec` session graduates and deletes them.
+1. **Backlog drained (`complete: true`) and every phase oracle green** →
+   **read `references/termination.md` and follow it**: the coverage pass
+   (unmapped spec requirements mean the build is NOT done), the final report
+   (run audit + per-ticket dossier via `report.mjs --out`, oracle evidence,
+   coverage, drift — computed, not narrated), and the campaign close (flip the
+   spec to `done`, delete `.ailoop/`). Never close a campaign — or report the
+   build done — without it.
 2. **Escalation** — closes nothing: the spec stays `locked` and `.ailoop/`
    stays put, so the resolved escalation resumes exactly where it stopped.
    The report is "stuck at ticket T, here's the wall and the decision I
    need" — never a rosy summary of a loop that didn't finish.
-3. **Engine unavailable (codex)** — a codex preflight or mid-run `engineError`
-   (Stage 0). Like escalation, closes nothing: `.ailoop/` and the `locked` spec
-   stay put, completed/merged work preserved. The report is "codex unavailable at
-   \<preflight | ticket T\>: \<reason\>" and the human's two resumes — fix codex
-   and re-invoke `ailoop codex`, or continue the remaining backlog on Claude with
-   plain `ailoop`. Never a silent engine switch.
 
 ## Resume — after an interruption or a resolved escalation
 
-`.ailoop/` exists → a previous run already did intake; skip it entirely. **Stage 0
-still runs first** — the engine is chosen per-invocation, so `ailoop codex` on
-resume re-runs the codex preflight (and re-writes the schema file) before any
-dispatch, and plain `ailoop` resumes on Claude regardless of how prior
-invocations ran. Then read `oracle.md`, the ledger tail,
+`.ailoop/` exists → a previous run already did intake; skip it entirely. Read
+`oracle.md`, the ledger tail,
 and run the scheduler. Reconcile before dispatching. If the last run ended on an
 escalation, open with a stamped `resume`-kind ledger entry (subject `run`) — it
 closes the human-pause window the `escalate` entry opened, so the run audit
@@ -969,10 +656,10 @@ credits that idle time to the human, not the loop.
   re-verify it like any worker result (green → judge, merge; red → reset to
   `todo` with an `attempts` entry noting the interrupted run). No branch →
   nothing durable happened; reset to `todo`.
-- **Legacy markdown backlog** (`backlog.md` from an older version of this
-  skill): convert it to `backlog.json` once, preserving all tickets and history
-  verbatim; ledger entry. Same vintage: a *tracked* `.ailoop/` or `specs/` —
-  `git rm -r --cached` it and add the gitignore entries on first resume.
+- **Legacy formats** (a markdown `backlog.md`, or a *tracked* `.ailoop/` /
+  `specs/`, from an older version of this skill): convert to `backlog.json` /
+  `git rm -r --cached` + gitignore once on first resume, preserving all
+  tickets and history verbatim; ledger entry.
 
 The files are the whole memory. If a fact from a previous run matters and isn't
 in them, it's gone — that's a bug in what was written, and the fix is to write
@@ -983,65 +670,37 @@ more into the ticket/ledger *this* run, not to try to remember harder.
 ## Durable state — the `.ailoop/` directory
 
 Trust these files over your recollection; they are what survives context
-compaction and an interrupted run. The directory is **untracked — gitignored
-at intake (Stage 1.7)**: campaign state is noise in the project's history,
-and the run's durable record is the merged code and its tests, not the
-ledger. Disk therefore holds the only copy; the one hazard is a mid-run
-`git clean -fdx`, accepted on the record. The directory lives exactly as long
-as its campaign — created at intake, deleted at termination — so its presence
-is what marks which spec is in flight.
+compaction and an interrupted run. The directory is untracked (intake step 7) and
+lives exactly as long as its campaign — created at intake, deleted at
+termination — so its presence is what marks which spec is in flight.
 
-- **`backlog.json`** — the **forward** state and the loop driver: the ticket
-  queue with status, phase, dependencies, and per-ticket `attempts` diagnosis
-  logs. "Where is the loop?" is answered by the scheduler, never by memory.
-  Bulk never lives here — captured output goes to `evidence/`.
-- **`schedule.mjs`** — the deterministic scheduler (copied from templates at
-  intake). Ready sets, batches, cap/thrash breaches, phase drain, completion —
-  computed, never eyeballed.
-- **`verify.mjs`** — the deterministic mechanical verifier (copied from
-  templates at intake). Dirty-tree check, full fast tier + a ticket's
-  `acceptanceChecks`, scope diff against `baseSha`, evidence + diff dump —
-  exit codes decide, never a model. The gaming read over its dumped diff is
-  the only judgment verification keeps. Doubles as the flake probe
-  (`--cmd ... --repeat N`).
-- **`report.mjs`** — the deterministic run auditor + dossier assembler (copied
-  from templates at intake). Reads the ledger's stamped entry headers +
-  `backlog.json` for the **run audit** (wall-clock by phase, long poles, work
-  breakdown), and globs `evidence/<id>.*.json` for the **per-ticket dossier**
-  (timing split, cost, findings — the inside of each ticket). Aggregating
-  timestamps and merging sidecars is arithmetic (Prime directive 6), so it lives
-  here, not in your eyeballing. `--out <path>` writes the report to a durable
-  location; at termination that path is the spec folder (outside `.ailoop/`, or
-  it dies with the delete). Never reads a transcript — only the sidecars, which
-  is why they must be captured while transcripts still exist (2.3b).
-- **`timing.mjs`** — the per-ticket transcript parser (copied from templates at
-  intake). `--ticket <id> <transcript.jsonl> …` → `evidence/<id>.timing.json`,
-  the activity split (deps / impl / tests / typecheck / db / reasoning). Run at
-  **accept** (2.3b), while the worker's transcript is still on disk — transcripts
-  reap on the harness's clock, not the loop's.
+- **`backlog.json`** — the **forward** state and the loop driver: tickets with
+  status, phase, dependencies, per-ticket `attempts` logs. Bulk never lives
+  here — captured output goes to `evidence/`.
+- **`schedule.mjs`** / **`verify.mjs`** / **`report.mjs`** / **`timing.mjs`**
+  — the deterministic scripts, copied from templates at intake: scheduler
+  (see **The scheduler**), mechanical verifier + flake probe (see
+  **Verification**), run auditor + dossier assembler (see **Termination**),
+  and per-ticket transcript parser (see **2.3b**). Arithmetic lives in them,
+  never in your eyeballing (Prime directive 6).
 - **`oracle.md`** — the **definition of done**: locked decisions, the scope
-  tripwire list, the baseline gate, the executable per-phase checks, and the
-  spec→delivery coverage map. Written at intake; amendable only per the
-  amendment tiers (mechanical = self-serve + ledger entry; semantic =
-  escalate); workers cite it; you gate against it.
+  tripwire list, the baseline gate, the executable per-phase checks, the
+  contract identity, and the spec→delivery coverage map. Written at intake;
+  amendable only per the amendment tiers; workers cite it; you gate against it.
 - **`ledger.md`** — the append-only **journal**: every dispatch, every judge
   decision and why, oracle amendments, red-team findings, decompositions,
-  drift flags, escalations. The audit trail — how the loop got where it is.
-  Each entry opens with a stamped, machine-readable header
-  (`[<seq> | <isoTs> | <kind> | <subject>]`) followed by the prose body — the
-  header is the loop's only timing record, so append entries with a **live
-  `date` read** (`$(date -u +%FT%TZ)`) rather than a hand-typed time; a forged
-  or missing stamp is the one way to blind the audit. `report.mjs` parses the
-  header, never the prose. Timing is telemetry: a malformed stamp costs one
-  unmeasured gap in the audit, never a broken loop.
-- **`evidence/`** — captured check output, one file per re-verify
-  (`T017.txt`; failed-attempt logs `T017-a2.txt`), plus the dumped diff per
-  verify (`T017-diff.patch` — the gaming read's input), plus the per-ticket
-  **dossier sidecars** `<id>.<kind>.json` captured at accept (2.3b):
-  `<id>.timing.json`, `<id>.cost.json`, `<id>.findings.json`, and any future
-  kind. `report.mjs` globs `<id>.*.json` — a new facet is a new file, never a
-  code change. Tickets and the ledger hold pointers into it; `backlog.json`
-  stays lean.
+  drift flags, escalations. Each entry opens with a stamped, machine-readable
+  header (`[<seq> | <isoTs> | <kind> | <subject>]`) followed by the prose body
+  — the header is the loop's only timing record, so append entries with a
+  **live `date` read** (`$(date -u +%FT%TZ)`), never a hand-typed time; a
+  forged or missing stamp is the one way to blind the audit. `report.mjs`
+  parses the header, never the prose. Timing is telemetry: a malformed stamp
+  costs one unmeasured gap in the audit, never a broken loop.
+- **`evidence/`** — captured check output per re-verify (`T017.txt`;
+  failed-attempt logs `T017-a2.txt`), the dumped diff per verify
+  (`T017-diff.patch` — the gaming read's input), and the per-ticket dossier
+  sidecars `<id>.<kind>.json` (2.3b). Tickets and the ledger hold pointers
+  into it; `backlog.json` stays lean.
 
 Update `backlog.json` after every ticket outcome and `ledger.md` after every
 judge decision.
@@ -1050,40 +709,27 @@ judge decision.
 
 - [ ] Ready set / batches / breaches / thrash / phase drain / completion came
       from `schedule.mjs` output — not from eyeballing the backlog.
-- [ ] Engine resolved (Stage 0): plain `ailoop` → Claude; `ailoop codex` →
-      codex preflight passed, `.ailoop/codex-build-schema.json` written,
-      `builderEngine`/`codexSchemaPath` threaded into dispatch, engine ledgered.
-      Any codex `engineError` → hard-exit, never a sonnet fall-back.
 - [ ] The ticket is cold-start runnable (self-contained `context`; full
-      `attempts` log included on retries) with a non-empty `files` declaration
-      and a `phase` tag.
-- [ ] Scheduler `missingFiles` resolved for the ticket: every missing declared
-      path is an intentional create, not a guessed home.
+      `attempts` log included on retries), with a non-empty `files`
+      declaration, a `phase` tag, and every scheduler-reported `missingFiles`
+      path resolved as an intentional create, not a guessed home.
 - [ ] Its `acceptance` is executable (not vibes) and was red-teamed — at intake
       for seeded tickets, at creation for decomposed children and repairs.
-- [ ] Decomposed parents: dependents rewired onto the children.
 - [ ] Worker dispatched into a worktree with `baseSha` captured; ledgered as a
-      dispatch.
-- [ ] Worker ran the fast-tier baseline (full-suite step may be scoped to
-      affected tests) + acceptance; new behavior has new tests, green under it.
-- [ ] **Independent re-verify** green via `verify.mjs`: clean tree, FULL fast
-      tier + `acceptanceChecks` (incl. the ticket's own gate-tier tests),
-      touched files (diffed from `baseSha`) ⊆ declared ∪ manifest allowlist,
-      no baseline regression — and the dumped diff gaming-read (skipped only
-      for `scaffold` tickets).
+      dispatch; workers cite locked decisions, none re-litigated.
+- [ ] **Independent re-verify** green per **Verification**: `verify.mjs`
+      (clean tree, full fast tier + `acceptanceChecks`, scope ⊆ declared ∪
+      manifest allowlist, no baseline regression) + the gaming read (skipped
+      only for `scaffold` tickets).
 - [ ] Evidence written to `.ailoop/evidence/` and pointed at — never inlined
       into `backlog.json`.
 - [ ] On accept, per-ticket sidecars captured **while the transcript still
-      exists** (2.3b): `<id>.timing.json` (via `timing.mjs`), `<id>.cost.json`,
-      `<id>.findings.json`.
-- [ ] Workers cite locked decisions; none re-litigated.
+      exists** (2.3b): timing, cost, findings.
 - [ ] Only merged-tree checks count as green; gate-tier baseline + phase
       oracle run when the scheduler says the phase drained; branches kept
-      until they're green, pruned after.
-- [ ] Gate red after a clean merge → bisect + repair ticket; never patch the
-      tree yourself.
+      until the gate is green, pruned after. Gate red after a clean merge →
+      bisect + repair ticket; never patch the tree yourself.
 - [ ] Oracle changed only via the amendment tiers, each with a ledger entry.
-- [ ] Attempt/thrash breaches read from the scheduler before every re-dispatch.
 - [ ] Nothing built crosses the out-of-scope list.
 - [ ] `backlog.json` and `ledger.md` updated — ledger entry appended with a
       live-`date` stamp and a `kind` in its header; coverage map current.
@@ -1102,8 +748,7 @@ judge decision.
   worse than no cap. The real guards are attempts and thrash;
   cost control is scripted measurement (`verify.mjs`) plus model tiering
   (top-tier judgment, Sonnet builders, Haiku only on tickets marked
-  mechanical — or, on the codex engine, terra builders / luna mechanical, judges
-  still Claude), not budget arithmetic.
+  mechanical), not budget arithmetic.
 - **Fully autonomous.** The only human touches in a healthy run
   are the intake pre-flight and the final report.
   Everything else is escalation, which by definition means the loop couldn't
