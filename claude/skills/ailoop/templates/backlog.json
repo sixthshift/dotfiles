@@ -19,7 +19,15 @@
     "acceptanceChecks mirrors a ticket's acceptance as runnable {name, cmd} entries",
     "— verify.mjs executes these on top of fastChecks.",
     "builderModel (optional) opts an obviously-mechanical ticket down to haiku;",
-    "scaffold (optional, true) marks pure scaffold/config — the gaming read is skipped."
+    "scaffold (optional, true) marks pure scaffold/config — the gaming read is skipped.",
+    "resources (top-level, optional) declares shared mutable test resources — per",
+    "name { pool, provision, teardown }: `provision <slot>` (run from the repo root)",
+    "stands up isolated instance <slot> and prints the KEY=VAL env lines checks need",
+    "to target it; values may contain {dir}, substituted with the tree under",
+    "verification. No provision → pool of 1 with no env: the ambient shared",
+    "instance, leases just serialize. A ticket lists the names its checks mutate in",
+    "its own resources array; verify.mjs leases a slot and injects the env",
+    "(SKILL.md — Verification, Shared verify resources)."
   ],
   "project": "<project>",
   "caps": { "maxAttempts": 3, "thrash": 2 },
@@ -27,6 +35,7 @@
     { "name": "type-check", "cmd": "<command>" },
     { "name": "unit tests", "cmd": "<command>" }
   ],
+  "resources": {},
   "tickets": [
     {
       "id": "T001",

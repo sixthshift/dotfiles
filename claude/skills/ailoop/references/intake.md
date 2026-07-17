@@ -84,6 +84,19 @@ human sees it and the drive runs unattended after.
    the gaming read); an obviously-mechanical ticket may carry
    `builderModel: "haiku"`.
 
+   While seeding, declare **shared verify resources**: if any ticket's checks
+   *mutate* a shared external resource (a dev database the integration suite
+   resets, a queue, a local object store), concurrent verifies would collide.
+   Probe whether the project can provision isolated instances — run the
+   candidate provision command once and drive a real check against the
+   instance; never assume from docs — then write the backlog's top-level
+   `resources` block (`{ pool, provision, teardown }` per resource; a bare
+   `{ "pool": 1 }` when isolation isn't provisionable — leases then serialize,
+   which is correct, just not parallel) and tag each affected ticket with
+   `resources: ["<name>"]`. Record what was probed and the rationale in
+   `oracle.md`. Mechanism in SKILL.md → **Verification → Shared verify
+   resources**.
+
    Then write the **coverage map** into `oracle.md`: every requirement/section
    of the spec → the ticket(s) or oracle check that delivers it. A requirement
    with no entry gets a ticket now or an explicit "deferred" line — silence in

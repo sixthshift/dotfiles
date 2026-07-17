@@ -140,6 +140,13 @@ coordinator's in-context knowledge:
   "fastChecks": [           // machine mirror of oracle.md's fast tier — verify.mjs runs it
     { "name": "type-check", "cmd": "bun run check" }
   ],
+  "resources": {            // OPTIONAL: shared mutable test resources — see
+    "db": {                 // Verification → Shared verify resources
+      "pool": 3,            // concurrent isolated instances (1 + no provision = serialize on ambient)
+      "provision": "<cmd>", // `<cmd> <slot>` stands up instance <slot>, prints KEY=VAL env lines
+      "teardown": "<cmd>"   // `<cmd> <slot>` stops it — run via --teardown-resources at termination
+    }
+  },
   "tickets": [
     {
       "id": "T017",
@@ -158,6 +165,8 @@ coordinator's in-context knowledge:
       ],
       "builderModel": "haiku", // OPTIONAL: opt-down for an obviously-mechanical ticket; default sonnet
       "scaffold": true,        // OPTIONAL: pure scaffold/config — the gaming read is skipped
+      "resources": ["db"],     // OPTIONAL: shared resources its acceptanceChecks MUTATE —
+                               // verify.mjs leases an instance before running them
       "attempts": [],          // durable diagnosis log — see below
       "evidence": null         // filled on completion: a POINTER into .ailoop/evidence/
                                // to the INDEPENDENT re-verify's output — never inline
@@ -313,6 +322,39 @@ ticket) → integration (merge clean) → gate-tier baseline + phase oracle
 
 A ticket that regresses the baseline is a **failed** ticket even if its own
 acceptance passes.
+
+### Shared verify resources — lease, don't collide
+
+Some acceptance checks mutate a shared external resource — a dev database the
+integration suite resets, a queue, a local object store. Two such verifies
+running concurrently corrupt each other's results, and the hazard is invisible
+to the scheduler: batches are file-disjoint, not resource-disjoint. The guard
+is declarative and mechanical, never coordinator vigilance:
+
+- The backlog's top-level `resources` block (seeded at intake) defines each
+  shared resource: `{ pool, provision, teardown }`. `provision <slot>` is a
+  **project-authored** command that stands up isolated instance `<slot>` and
+  prints the `KEY=VAL` env lines checks need to target it (values may contain
+  `{dir}` — substituted with the tree under verification, for instances that
+  must read config/migrations from the branch being verified); `teardown
+  <slot>` stops it (`verify.mjs --teardown-resources`, at termination). **No
+  provision command → pool of 1 with no env**: the ambient shared instance,
+  with leases serializing access — correctness without parallelism, for
+  projects where isolation isn't provisionable.
+- A ticket lists the resource names its `acceptanceChecks` mutate in its own
+  `resources` array. Read-only touches don't count; a suite that *resets* the
+  resource does.
+- `verify.mjs` leases one slot per declared resource before running any check
+  (flake probes included), provisions lazily on first lease, injects the env
+  into every check subprocess, and releases on exit. A full pool queues —
+  serialization is the graceful floor, collision is never possible.
+
+Disclosed limit: builders' own in-worktree check runs still share the ambient
+instance and may contend during a fan-out — a resource-flavored failure in a
+builder's *self-report* can be contention, and the leased independent
+re-verify is what counts. Gate-tier and phase-oracle runs also use the ambient
+instance; they are serial by construction (after a batch settles, before the
+next dispatch).
 
 ### Flaky checks — discriminate, then decide
 
@@ -679,10 +721,10 @@ termination — so its presence is what marks which spec is in flight.
   here — captured output goes to `evidence/`.
 - **`schedule.mjs`** / **`verify.mjs`** / **`report.mjs`** / **`timing.mjs`**
   — the deterministic scripts, copied from templates at intake: scheduler
-  (see **The scheduler**), mechanical verifier + flake probe (see
-  **Verification**), run auditor + dossier assembler (see **Termination**),
-  and per-ticket transcript parser (see **2.3b**). Arithmetic lives in them,
-  never in your eyeballing (Prime directive 6).
+  (see **The scheduler**), mechanical verifier + flake probe + resource
+  leases (see **Verification**), run auditor + dossier assembler (see
+  **Termination**), and per-ticket transcript parser (see **2.3b**).
+  Arithmetic lives in them, never in your eyeballing (Prime directive 6).
 - **`oracle.md`** — the **definition of done**: locked decisions, the scope
   tripwire list, the baseline gate, the executable per-phase checks, the
   contract identity, and the spec→delivery coverage map. Written at intake;

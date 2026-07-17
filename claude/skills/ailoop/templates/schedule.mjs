@@ -19,7 +19,7 @@ const MANIFESTS = new Set([
 const TERMINAL = new Set(['done', 'decomposed'])
 
 const path = process.argv[2] ?? '.ailoop/backlog.json'
-const { tickets = [], caps = {} } = JSON.parse(readFileSync(path, 'utf8'))
+const { tickets = [], caps = {}, resources = {} } = JSON.parse(readFileSync(path, 'utf8'))
 const maxAttempts = caps.maxAttempts ?? 3
 const thrashWindow = caps.thrash ?? 2
 
@@ -41,7 +41,15 @@ for (const t of tickets) {
   // key) and unverifiable (the scope check would fail every touch).
   if (!TERMINAL.has(t.status) && (t.files ?? []).length === 0)
     problems.push(`${t.id} declares no files — declare its footprint or decompose it`)
+  // Resources are verify-time leases; an undeclared name would fail at verify —
+  // after a full dispatch was already spent. Catch it here.
+  for (const r of t.resources ?? [])
+    if (!TERMINAL.has(t.status) && !resources[r])
+      problems.push(`${t.id} declares unknown resource "${r}" — define it in the backlog's resources block`)
 }
+for (const [name, def] of Object.entries(resources))
+  if ((def.pool ?? 1) > 1 && !def.provision)
+    problems.push(`resource "${name}": pool > 1 without a provision command — every slot would be the same shared instance`)
 
 // Declared paths absent from disk. Not automatically a problem — a ticket may
 // legitimately CREATE files — but an edit-intended path that's missing is the

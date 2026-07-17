@@ -39,8 +39,10 @@ driving.
   plain, not smoothed over.
 
 **Then close the campaign:** confirm the run report was written to the spec
-folder (the `--out` above) — that is the only record that survives — flip the
-spec's frontmatter to `status: done`, and **delete `.ailoop/`**. Its presence
+folder (the `--out` above) — that is the only record that survives — tear down
+any provisioned verify resources (`node .ailoop/verify.mjs
+--teardown-resources`; skip when the backlog has no `resources` block), flip
+the spec's frontmatter to `status: done`, and **delete `.ailoop/`**. Its presence
 is what marks a campaign in flight, and the next intake's spec lookup relies
 on that invariant. The `done` spec and its `.run-report.md` stay on disk
 (untracked) until the next `/aispec` session graduates and deletes them.
