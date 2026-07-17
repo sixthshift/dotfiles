@@ -48,6 +48,9 @@ RUN bun add -g typescript-language-server
 RUN curl -fsSL https://claude.ai/install.sh | bash
 ENV PATH="/root/.local/bin:${PATH}"
 
+# Install OpenAI Codex CLI (standalone binary → /root/.local/bin, already on PATH)
+RUN curl -fsSL https://chatgpt.com/codex/install.sh | sh
+
 # Install Go (for mcp-language-server)
 RUN curl -fsSL https://go.dev/dl/go1.24.13.linux-$(dpkg --print-architecture).tar.gz | tar -C /usr/local -xzf -
 ENV PATH="/usr/local/go/bin:/root/go/bin:${PATH}"
