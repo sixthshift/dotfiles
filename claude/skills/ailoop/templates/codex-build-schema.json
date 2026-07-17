@@ -1,0 +1,28 @@
+{
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "done": { "type": "boolean" },
+    "branch": { "type": "string", "description": "the worktree branch the work is on; required when done" },
+    "evidence": { "type": "string", "description": "baseline + acceptance output you ran; required when done" },
+    "tooBig": { "type": "boolean" },
+    "proposedTickets": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "title": { "type": "string" },
+          "context": { "type": "string" },
+          "acceptance": { "type": "string" },
+          "files": { "type": "array", "items": { "type": "string" } },
+          "dependsOn": { "type": "array", "items": { "type": "string" } }
+        },
+        "required": ["title", "context", "acceptance"]
+      }
+    },
+    "blocked": { "type": "boolean" },
+    "reason": { "type": "string" }
+  },
+  "required": ["done"]
+}

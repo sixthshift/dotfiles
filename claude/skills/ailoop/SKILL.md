@@ -384,6 +384,103 @@ honest. "Frozen" means never *silently* changed — not never changed:
 
 ---
 
+## Stage 0 — Build engine (every invocation, before Stage 1 and before Resume)
+
+The builders can run on Claude (default) or on **codex** (`codex exec`, GPT-5.6
+tier family). This is a **per-invocation switch the human owns**, not a contract
+decision: you re-read it every invocation and never persist it as identity. The
+human chooses by how they invoke —
+
+- `ailoop` (no engine token) → **Claude engine.** Builders are `sonnet`
+  (mechanical tickets `haiku`), exactly as **2.2** describes. Nothing to do here;
+  go to Stage 1 / Resume.
+- `ailoop codex` (the token `codex` anywhere in the invocation args) → **codex
+  engine.** Do the three steps below before any build spend.
+
+**Why swap builders but not judges.** Codex builds; Claude judges. The Build
+stage runs on codex; the *independent verify relay, the gaming read, integrate,
+gate, and you the coordinator all stay Claude* — a different vendor building than
+judging is the entire point (a judge sharing the builder's blind spots
+rubber-stamps them). The tier mapping mirrors the Claude tiers it replaces:
+
+| Build role | Claude engine | codex engine |
+|---|---|---|
+| Builder (default) | `sonnet` | `gpt-5.6-terra` (effort high) |
+| Mechanical opt-down (`builderModel: "haiku"`) | `haiku` | `gpt-5.6-luna` (effort medium) |
+| Verify relay · gaming read · integrate · gate · coordinator | Claude | **Claude (unchanged)** |
+
+Codex reaches the builder only through a **relay**: Workflow scripts have no
+shell, so a cheap `haiku` Claude agent (in the Workflow-managed worktree) drives
+`codex exec` and relays its schema-validated result. The relay judges nothing —
+terra/luna do the thinking inside codex.
+
+**On `ailoop codex`:**
+
+1. **Preflight `codex exec` first — before Stage 1 / Resume, before touching any
+   state.** Codex is **assumed already authenticated** on this machine — the loop
+   never runs `codex login` (it is an interactive flow with no place in an
+   unattended run). Preflight only *checks* that assumption and everything else.
+   Run a trivial timeboxed call against the builder model, e.g.:
+   ```
+   codex exec -m gpt-5.6-terra --dangerously-bypass-approvals-and-sandbox \
+     --skip-git-repo-check -c model_reasoning_effort=low \
+     'Reply with the single word: ok'
+   ```
+   Exit 0 with a sane final message → codex is available. **Any failure**
+   (not installed, **not logged in**, the gated model not accessible to this
+   account, no network) → **hard early-exit** (see the rule below): report the
+   failure — if it is an auth error, say "codex is not logged in — run `codex
+   login` and re-invoke" — and stop. Do not attempt to log in, do not intake, do
+   not dispatch, do not create `.ailoop/`.
+2. **Then, once `.ailoop/` exists** — Stage 1 creates it on a fresh run (fold this
+   into its template-copy step); it already exists on Resume — do two things:
+   - **Write the codex output schema.** Copy `templates/codex-build-schema.json` →
+     `.ailoop/codex-build-schema.json`. Its **absolute** path is the
+     `codexSchemaPath` you hand the Workflow (and single-ticket relay); `codex exec
+     --output-schema` validates each build's final message against it. (On a Claude
+     run this file is simply absent — harmless.)
+   - **Ledger the engine** in the run header: engine (codex), the models
+     (terra/luna), and the preflight result. Provenance is architectural here — a
+     resumed run may legitimately switch engines between invocations, and only the
+     ledger records which tickets were built by which. On a Claude run, ledger the
+     engine too, for symmetry.
+
+   Do NOT create `.ailoop/` in Stage 0 on a fresh run — its existence is the Resume
+   signal (Stage 1.0). Preflight is the only pre-`.ailoop/` action.
+
+**The early-exit rule (codex only) — never a silent fall-back.** Any codex
+*execution* failure is a **hard stop of the whole loop**, with `.ailoop/`
+preserved:
+
+- at **preflight** (above), or
+- **mid-run** — a Build relay returns `engineError` (the Workflow surfaces it as
+  a top-level `engineError`; a single-ticket relay returns it directly). This
+  covers *transient* failures too (HTTP 429, timeout): the chosen policy is
+  early-exit on the first one, not retry.
+
+On a hard stop: report *"codex unavailable at \<preflight | ticket T\>: \<reason\>"*
+and the explicit human choice — fix codex and re-invoke `ailoop codex` to resume,
+**or** invoke plain `ailoop` to continue the remaining backlog on Claude. Never
+switch engines yourself; a run that silently went half-sonnet would misrepresent
+what built it.
+
+**What is NOT an engine failure:** a codex build that *ran* and produced a branch
+which then *fails verification* (red checks, out-of-scope files, gaming) — or one
+that exited cleanly but *left the tree dirty* — is a **normal red**, diagnosed and
+re-dispatched like any failed build (2.3), never a hard stop. `engineError` means
+codex could not execute, full stop.
+
+**Narrow the fan-out on codex.** The early-exit-on-first-transient rule turns a
+wide parallel batch into a liability: codex model access is gated/rate-limited,
+and one 429 among sixteen concurrent `codex exec` calls kills the whole run. So on
+the codex engine, dispatch **small batches** — take only the first few disjoint
+tickets from the scheduler's `batches[0]` (≈3 at a time) rather than the whole
+set, and let the loop come back for the rest. On the Claude engine, fan out the
+full batch as before. This is coordinator policy, not a knob — tune the width down
+further if you see rate-limit stops, up if the account's limits are generous.
+
+---
+
 ## Stage 1 — Intake & Oracle Contract
 
 Do this once, on the first invocation only (see **Resume** for re-invocations
@@ -392,7 +489,9 @@ after an interruption). Produce `.ailoop/oracle.md`, `.ailoop/backlog.json`, and
 `templates/schedule.mjs` → `.ailoop/schedule.mjs`,
 `templates/verify.mjs` → `.ailoop/verify.mjs`,
 `templates/report.mjs` → `.ailoop/report.mjs`,
-`templates/timing.mjs` → `.ailoop/timing.mjs`, and create
+`templates/timing.mjs` → `.ailoop/timing.mjs` (and, on the codex engine only,
+`templates/codex-build-schema.json` → `.ailoop/codex-build-schema.json` per
+Stage 0), and create
 `.ailoop/evidence/` for captured check output and per-ticket sidecars. This is the pre-flight; the
 human sees it and the drive runs unattended after.
 
@@ -566,9 +665,19 @@ judge rubber-stamping workers: anything that *judges* — the gaming read, the
 phase-oracle interpretation, you the coordinator — stays top-tier; anything
 that *measures* is a script.
 
-- **Single ticket** → one `Agent` subagent (`model:` the ticket's
-  `builderModel`, default `'sonnet'`;
-  `isolation: 'worktree'`) — **never on the main working tree**: an
+**On the codex engine (Stage 0), only the builder tier changes:** the Build
+stage runs on `gpt-5.6-terra` (mechanical tickets `gpt-5.6-luna`) via the haiku
+codex relay; verify, gaming read, integrate, gate, and you stay Claude. Pass
+`builderEngine: 'codex'` and `codexSchemaPath` (the absolute path to
+`.ailoop/codex-build-schema.json`) into the Workflow — and into the single-ticket
+relay below. A relay's `engineError` is a **hard-exit** (2.3 / Stage 0), never a
+sonnet fall-back.
+
+- **Single ticket** → **Claude engine:** one `Agent` subagent (`model:` the
+  ticket's `builderModel`, default `'sonnet'`; `isolation: 'worktree'`).
+  **Codex engine:** one `haiku` `Agent` relay (`isolation: 'worktree'`) driving
+  `codex exec` on the ticket brief — same relay shape the Workflow uses; on
+  `engineError` hard-exit. Either way **never on the main working tree**: an
   interrupted worker must leave a branch to reconcile, not a dirty tree, and
   the scope check needs a defined diff base. Capture `baseSha`
   (`git rev-parse HEAD`) immediately before dispatch. The prompt is the
@@ -591,7 +700,8 @@ that *measures* is a script.
   batch run would have given you.
 - **A disjoint batch** → the `build-phase` Workflow (see the template),
   passing `baseSha` (`git rev-parse HEAD` at invocation) alongside the
-  tickets, frozen decisions, baseline, and phase oracle: one worker `agent()`
+  tickets, frozen decisions, baseline, and phase oracle — plus, on the codex
+  engine, `builderEngine: 'codex'` and `codexSchemaPath`: one worker `agent()`
   per ticket, each `isolation: 'worktree'`, a per-ticket **Verify** relay
   (runs `verify.mjs`) plus a **gaming read** pipelined behind each build, then
   **merge** the verified ones, then gate on the merged tree (skipped when
@@ -687,6 +797,13 @@ The judgment the inner body cannot do:
   strengthens whichever acceptance let the interaction slip — and its own
   fresh acceptance gets red-teamed before dispatch, like any mid-flight ticket.
 - **Scope tripwire hit** → halt, report; do not "fix" it by building more.
+- **`engineError`** (codex engine only — the Workflow's top-level `engineError`,
+  or a single-ticket relay's `engineError`) → **hard-exit the whole loop** per
+  Stage 0: codex could not execute. Do NOT re-dispatch the ticket, do NOT switch
+  it to sonnet. Any tickets the same batch already built, verified, and merged
+  are kept (state preserved); you simply dispatch nothing further. Report codex
+  unavailable and the human's resume-or-switch choice. (A codex build that *ran*
+  and failed verification is a normal red above, not this.)
 
 When the scheduler's `phasesDrained` shows a phase with no live tickets left —
 never your own tally of the backlog — run the **baseline's gate tier** and that
@@ -721,10 +838,23 @@ new facet is a new file, never a code change). Write these on every accept:
   transcript path is the `output-file` from the `<task-notification>` (direct
   dispatch) or the workflow's `agent-<id>.jsonl`. The dominant bucket is almost
   always `reasoning` — that is the model thinking and generating code, not test
-  runs; naming it is the point.
+  runs; naming it is the point. **On the codex engine the split is not
+  meaningful** — the transcript is the haiku relay's (shell + file ops), and
+  codex's real implementation/reasoning ran in a subprocess it can't see. Do not
+  present a relay-derived split as the ticket's work: record the ticket's
+  wall-clock from the ledger dispatch stamps and mark the activity split
+  unavailable (codex-internal) rather than fake one.
 - **`<id>.cost.json`** — `{ tokens, agents, dispatches }`. `tokens` is
   `subagent_tokens` from the notification (sum across a ticket's dispatches);
-  `agents`/`dispatches` you already know. Free at accept, gone later.
+  `agents`/`dispatches` you already know. Free at accept, gone later. **On the
+  codex engine this is a trap:** `subagent_tokens` counts only the haiku relay,
+  not codex's spend — the real work happened in a subprocess the harness can't
+  see. Use the relay's returned **`codexUsage`** (`built[].result.codexUsage`
+  from the Workflow, or the single-ticket relay's return) for the token figure,
+  and record `{ engine:"codex", model, codexUsage, relayTokens: subagent_tokens }`
+  so the dossier reflects codex's real cost. Absent `codexUsage` (no usage event
+  in the stream), say so — never substitute the relay figure as if it were the
+  build's.
 - **`<id>.findings.json`** — `{ worker, rationale, amendments, escaped_bugs }`.
   The worker's notable finding (from its result), your one-line accept rationale,
   and any oracle amendment or escaped-bug this ticket triggered. This is the
@@ -804,11 +934,20 @@ either: the next invocation picks it up from `.ailoop/`; see **Resume**.)
    stays put, so the resolved escalation resumes exactly where it stopped.
    The report is "stuck at ticket T, here's the wall and the decision I
    need" — never a rosy summary of a loop that didn't finish.
+3. **Engine unavailable (codex)** — a codex preflight or mid-run `engineError`
+   (Stage 0). Like escalation, closes nothing: `.ailoop/` and the `locked` spec
+   stay put, completed/merged work preserved. The report is "codex unavailable at
+   \<preflight | ticket T\>: \<reason\>" and the human's two resumes — fix codex
+   and re-invoke `ailoop codex`, or continue the remaining backlog on Claude with
+   plain `ailoop`. Never a silent engine switch.
 
 ## Resume — after an interruption or a resolved escalation
 
-`.ailoop/` exists → a previous run already did intake; skip it entirely. Read
-`oracle.md`, the ledger tail,
+`.ailoop/` exists → a previous run already did intake; skip it entirely. **Stage 0
+still runs first** — the engine is chosen per-invocation, so `ailoop codex` on
+resume re-runs the codex preflight (and re-writes the schema file) before any
+dispatch, and plain `ailoop` resumes on Claude regardless of how prior
+invocations ran. Then read `oracle.md`, the ledger tail,
 and run the scheduler. Reconcile before dispatching. If the last run ended on an
 escalation, open with a stamped `resume`-kind ledger entry (subject `run`) — it
 closes the human-pause window the `escalate` entry opened, so the run audit
@@ -911,6 +1050,10 @@ judge decision.
 
 - [ ] Ready set / batches / breaches / thrash / phase drain / completion came
       from `schedule.mjs` output — not from eyeballing the backlog.
+- [ ] Engine resolved (Stage 0): plain `ailoop` → Claude; `ailoop codex` →
+      codex preflight passed, `.ailoop/codex-build-schema.json` written,
+      `builderEngine`/`codexSchemaPath` threaded into dispatch, engine ledgered.
+      Any codex `engineError` → hard-exit, never a sonnet fall-back.
 - [ ] The ticket is cold-start runnable (self-contained `context`; full
       `attempts` log included on retries) with a non-empty `files` declaration
       and a `phase` tag.
@@ -959,7 +1102,8 @@ judge decision.
   worse than no cap. The real guards are attempts and thrash;
   cost control is scripted measurement (`verify.mjs`) plus model tiering
   (top-tier judgment, Sonnet builders, Haiku only on tickets marked
-  mechanical), not budget arithmetic.
+  mechanical — or, on the codex engine, terra builders / luna mechanical, judges
+  still Claude), not budget arithmetic.
 - **Fully autonomous.** The only human touches in a healthy run
   are the intake pre-flight and the final report.
   Everything else is escalation, which by definition means the loop couldn't
