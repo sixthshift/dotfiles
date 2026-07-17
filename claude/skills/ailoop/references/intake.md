@@ -1,12 +1,41 @@
 # Stage 1 — Intake & Oracle Contract
 
-Read via SKILL.md's router on the **first invocation only** (`.ailoop/` absent;
-see **Resume** in SKILL.md for re-invocations). Produce `.ailoop/oracle.md`,
-`.ailoop/backlog.json`, and `.ailoop/ledger.md` (templates in `templates/`),
+Read via SKILL.md's router on the **first invocation only** (`.ailoop/run/` absent;
+see **Resume** in SKILL.md for re-invocations). Produce `.ailoop/run/oracle.md`,
+`.ailoop/run/backlog.json`, and `.ailoop/run/ledger.md` (templates in `templates/`),
 copy `templates/schedule.mjs`, `templates/verify.mjs`, `templates/report.mjs`,
-and `templates/timing.mjs` into `.ailoop/`, and create `.ailoop/evidence/` for
-captured check output and per-ticket sidecars. This is the pre-flight; the
-human sees it and the drive runs unattended after.
+`templates/timing.mjs`, and `templates/learn.mjs` into `.ailoop/run/`, and
+create `.ailoop/run/evidence/` for captured check output and per-ticket
+sidecars. This is the pre-flight; the human sees it and the drive runs
+unattended after.
+
+## Prime from `.ailoop/learnings/` (if present)
+
+A prior campaign in this repo may have left `.ailoop/learnings/` — the durable
+cross-campaign store (SKILL.md — Durable state). Read it **first** and seed
+intake's normal artifacts from it. There is no separate runtime consumer: priors
+flow into the *same* `oracle.md` / `backlog.json` the loop already uses.
+
+- **`checks.json`** (`active` entries) → the toolchain-detection starting
+  hypothesis (step 0) and the baseline gate (step 2): use the recorded commands
+  and quirks instead of deriving blind.
+- **`flakes.json`** (`quarantined` entries) → seed `oracle.md`'s quarantine
+  section with each test, its failure mode, and its discriminator, so verify
+  applies it from turn one instead of re-discovering the flake mid-run.
+- **`sizing.md`** → decompose-preemptively priors for step 4: an area that ran
+  too big last time is seeded smaller now.
+- **`patterns.md`** → gaming shapes and instrument-blindness blind spots for the
+  step 5 red-team to weight toward.
+- **`landmines.md`** → codebase surprises to fold into the `context` of any
+  ticket they touch.
+
+**The validate guard.** Every primed entry is a prior the run must **re-confirm
+or retire** — never trusted blind. A `checks.json` command that no longer works
+fails the step 3 probe; a `flakes.json` test that's now stable surfaces in the
+normal flake flow; a `landmines.md` gotcha in code since rewritten just won't
+recur. Harvest (termination) records each correction, so the store sharpens
+instead of rotting into folklore. No `.ailoop/learnings/` → first campaign here;
+derive everything from the spec and the live toolchain as usual.
 
 0. **Locate the spec.** Use the path the user gave, or look in `specs/` for
    `status: locked` frontmatter (`draft` specs are invisible here; `done` are
@@ -15,7 +44,7 @@ human sees it and the drive runs unattended after.
    - **several locked** → **ask which** (AskUserQuestion). Ideally only one
      spec is locked at a time — a spec queued behind another campaign goes
      stale waiting — and picking the campaign is intent, never defaulted.
-     The `.ailoop/` created at intake is what marks the chosen one active
+     The `.ailoop/run/` created at intake is what marks the chosen one active
      from then on;
    - **none locked** (drafts only, nothing, or only a legacy root
      `SPEC.md`/`PLAN.md`) → **refuse to start** — a draft goes back to
@@ -66,7 +95,7 @@ human sees it and the drive runs unattended after.
      stack and what's installed. A verifiable-in-principle oracle you cannot run
      *now* is not a green light.
 
-4. **Seed the backlog.** Turn each phase into tickets in `.ailoop/backlog.json`,
+4. **Seed the backlog.** Turn each phase into tickets in `.ailoop/run/backlog.json`,
    each sized to one focused subagent session and written cold-start runnable
    (full schema in SKILL.md), each tagged with its `phase` and a **non-empty**
    `files` declaration **anchored in evidence**: every declared path either
@@ -117,9 +146,12 @@ human sees it and the drive runs unattended after.
    `attempts` log). There is no cap on total dispatches — the run goes to
    completion. Snapshot the caps in the ledger run header.
 
-7. **Keep the campaign out of git.** `.ailoop/` and `specs/` are untracked by
+7. **Keep the campaign out of git.** `.ailoop/run/` and `specs/` are untracked by
    design — campaign state, noise in the project's history. Ensure
-   `.gitignore` covers both (add the entries if missing). The run's durable
+   `.gitignore` covers both (add the entries if missing) — ignore
+   **`.ailoop/run/`**, *not* the whole `.ailoop/`: its sibling
+   `.ailoop/learnings/` is the cross-campaign store and is meant to be tracked
+   (`.gitignore` line `/.ailoop/run/`, never `/.ailoop/`). The run's durable
    record is the merged code, its tests, and the workers' branch commits;
    the rare commit you author on the mainline yourself goes through the
    **`commit` skill**. Accepted cost, on the record: disk holds the

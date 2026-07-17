@@ -3,7 +3,7 @@
 // computes readiness, batches, breaches, thrash, phase drain, or completion by
 // eye; it runs this and judges only what the output MEANS. Dependency-free;
 // Node >= 18.
-// Usage: node .ailoop/schedule.mjs [path-to-backlog.json]
+// Usage: node .ailoop/run/schedule.mjs [path-to-backlog.json]
 import { readFileSync, existsSync } from 'node:fs'
 
 // Allowlisted for every ticket (dependency adds) and excluded from the
@@ -18,7 +18,7 @@ const MANIFESTS = new Set([
 // dependents; 'decomposed' does NOT — its children do.
 const TERMINAL = new Set(['done', 'decomposed'])
 
-const path = process.argv[2] ?? '.ailoop/backlog.json'
+const path = process.argv[2] ?? '.ailoop/run/backlog.json'
 const { tickets = [], caps = {}, resources = {} } = JSON.parse(readFileSync(path, 'utf8'))
 const maxAttempts = caps.maxAttempts ?? 3
 const thrashWindow = caps.thrash ?? 2

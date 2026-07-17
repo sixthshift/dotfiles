@@ -5,16 +5,16 @@
 // judgment verification keeps — happens over that dump, elsewhere.
 // Dependency-free; Node >= 18.
 //
-// Run from the repo root (the main tree, where .ailoop/ lives); --dir points
+// Run from the repo root (the main tree, where .ailoop/run/ lives); --dir points
 // at the branch's worktree.
 //
 // Usage:
-//   node .ailoop/verify.mjs --ticket <id> --dir <worktree> --base <sha>
+//   node .ailoop/run/verify.mjs --ticket <id> --dir <worktree> --base <sha>
 //     [--only <check name>]            # run just one named check
 //     [--cmd "<command>" [--name <label>]]  # ad-hoc check instead of the backlog's
 //     [--repeat N]                     # flake probe: run each check N times
 //     [--backlog <path>] [--evidence-dir <path>] [--out <path>]
-//   node .ailoop/verify.mjs --teardown-resources   # at termination: stop every
+//   node .ailoop/run/verify.mjs --teardown-resources   # at termination: stop every
 //     provisioned resource instance (runs each resource's teardown per slot)
 //
 // Default mode runs the backlog's fastChecks + the ticket's acceptanceChecks.
@@ -53,9 +53,9 @@ const opt = flag => { const i = argv.indexOf(flag); return i === -1 ? undefined 
 const ticketId = opt('--ticket'), dir = opt('--dir'), base = opt('--base')
 const only = opt('--only'), adhoc = opt('--cmd')
 const repeat = Number(opt('--repeat') ?? 1)
-const backlogPath = opt('--backlog') ?? '.ailoop/backlog.json'
-const evidenceDir = opt('--evidence-dir') ?? '.ailoop/evidence'
-const resourcesDir = opt('--resources-dir') ?? '.ailoop/resources'
+const backlogPath = opt('--backlog') ?? '.ailoop/run/backlog.json'
+const evidenceDir = opt('--evidence-dir') ?? '.ailoop/run/evidence'
+const resourcesDir = opt('--resources-dir') ?? '.ailoop/run/resources'
 
 const backlog = JSON.parse(readFileSync(backlogPath, 'utf8'))
 const resourceDefs = backlog.resources ?? {}
@@ -86,7 +86,7 @@ if (argv.includes('--teardown-resources')) {
 }
 
 if (!ticketId || !dir || !base) {
-  console.error('usage: node .ailoop/verify.mjs --ticket <id> --dir <worktree> --base <sha> [--only <check>] [--cmd "<command>" [--name <label>]] [--repeat N] [--backlog <path>] [--evidence-dir <path>] [--out <path>] | --teardown-resources')
+  console.error('usage: node .ailoop/run/verify.mjs --ticket <id> --dir <worktree> --base <sha> [--only <check>] [--cmd "<command>" [--name <label>]] [--repeat N] [--backlog <path>] [--evidence-dir <path>] [--out <path>] | --teardown-resources')
   process.exit(2)
 }
 const out = opt('--out') ?? join(evidenceDir, `${ticketId}.txt`)
@@ -128,7 +128,7 @@ if (checks.length === 0) {
 
 // ── Shared resource leases ────────────────────────────────────────────────
 // One slot per declared resource, acquired before any check runs. The lock is
-// a mkdir (atomic) under .ailoop/resources/<name>/<slot>.lock holding the
+// a mkdir (atomic) under .ailoop/run/resources/<name>/<slot>.lock holding the
 // leaseholder's pid — a dead holder's lock is stolen, so a killed verify never
 // wedges the pool. Slots provision lazily: first lease runs the provision
 // command (from the repo root) and caches its KEY=VAL stdout as <slot>.env.

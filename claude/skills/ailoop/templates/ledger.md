@@ -27,7 +27,7 @@ else parses this file, so keep the shape exact:
   - <seq>     zero-padded sequence, e.g. 0042
   - <isoTs>   UTC ISO-8601 stamp. STAMP IT LIVE at append time so it can't be
               forged or forgotten — append the entry with a real clock read:
-                printf '[%04d | %s | dispatch | T017] retry after gate red\n' 42 "$(date -u +%FT%TZ)" >> .ailoop/ledger.md
+                printf '[%04d | %s | dispatch | T017] retry after gate red\n' 42 "$(date -u +%FT%TZ)" >> .ailoop/run/ledger.md
   - <kind>    closed vocab, one per event — this IS the machine-readable decision,
               so report.mjs counts work without parsing the prose:
                 intake · dispatch · accept · retry · decompose · phase-close ·

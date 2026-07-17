@@ -2,7 +2,7 @@
 name: ailoop
 description: >-
   Drive a locked build spec to completion through an autonomous, self-terminating
-  engineering loop: one invocation intakes (first run) or resumes from .ailoop/
+  engineering loop: one invocation intakes (first run) or resumes from .ailoop/run/
   state and drives the backlog until every phase oracle is green — no dispatch
   cap; hours-long, multi-phase runs are the intended shape. You act as the
   judging COORDINATOR: extract an executable oracle from the spec, dispatch
@@ -42,14 +42,14 @@ collapse them into one.
 | Wants | **Judgment** — pick the next ticket, interpret failures, decide retry vs. decompose vs. escalate | **Determinism** — reproducible build, verify-gate, no improvisation |
 
 - **The backlog drives the loop.** You do not work off the spec directly: at
-  intake you seed `.ailoop/backlog.json`, and from then on the loop *is* "pull
+  intake you seed `.ailoop/run/backlog.json`, and from then on the loop *is* "pull
   the next ready ticket → dispatch → verify → update the backlog → repeat."
   See **The backlog** below; it is the center of this skill.
 - **One invocation runs to completion.** There is no dispatch cap: the run
   ends only when the backlog is drained and every phase oracle is green, or on
   escalation. Hours-long, multi-phase runs are the intended shape — length,
   compaction, or dispatches spent are never reasons to stop. Context **will**
-  be compacted mid-run; the `.ailoop/` files, not the conversation, are the
+  be compacted mid-run; the `.ailoop/run/` files, not the conversation, are the
   loop's memory — a fact held only in conversation is a fact the loop will
   eventually lose.
 - **Each ticket is built by a fresh subagent** with no memory of this
@@ -92,7 +92,7 @@ collapse them into one.
 
 ## The backlog — the loop's driver
 
-`.ailoop/backlog.json` is the heart of this skill: a dependency-ordered queue
+`.ailoop/run/backlog.json` is the heart of this skill: a dependency-ordered queue
 of tickets, machine-readable **on purpose**. Why backlog-driven and not
 phase-driven:
 
@@ -110,11 +110,11 @@ phase-driven:
 Everything the loop needs to *compute* about the backlog is deterministic graph
 work — exactly the bookkeeping an LLM eyeballing a growing file gets silently
 wrong (one misread `depends_on` = a worker building against code that doesn't
-exist). At intake, copy `templates/schedule.mjs` to `.ailoop/schedule.mjs`.
+exist). At intake, copy `templates/schedule.mjs` to `.ailoop/run/schedule.mjs`.
 Every loop turn starts with:
 
 ```
-node .ailoop/schedule.mjs
+node .ailoop/run/schedule.mjs
 ```
 
 It prints: structural problems (dangling/duplicate dependencies, dependents
@@ -168,7 +168,7 @@ coordinator's in-context knowledge:
       "resources": ["db"],     // OPTIONAL: shared resources its acceptanceChecks MUTATE —
                                // verify.mjs leases an instance before running them
       "attempts": [],          // durable diagnosis log — see below
-      "evidence": null         // filled on completion: a POINTER into .ailoop/evidence/
+      "evidence": null         // filled on completion: a POINTER into .ailoop/run/evidence/
                                // to the INDEPENDENT re-verify's output — never inline
     }
   ]
@@ -236,7 +236,7 @@ Every decomposition follows the same bookkeeping, or the graph silently rots:
   the gate failure it repairs).
 - A ticket is `done` only when the independent re-verify passed *and*
   `evidence` points at the re-verify's actual output, written to
-  `.ailoop/evidence/<id>.txt` (failed-attempt output at `<id>-a<n>.txt` when
+  `.ailoop/run/evidence/<id>.txt` (failed-attempt output at `<id>-a<n>.txt` when
   worth keeping). Never inline captured output into `backlog.json` — the
   scheduler and every resume re-read that file; bulk there taxes every turn of
   the loop.
@@ -290,7 +290,7 @@ for a single-ticket dispatch you run the script and read the diff yourself.
 
 - **`verify.mjs` measures (mechanical, no model).** Run from the repo root
   against the worker's worktree
-  (`node .ailoop/verify.mjs --ticket <id> --dir <worktree> --base <baseSha>`),
+  (`node .ailoop/run/verify.mjs --ticket <id> --dir <worktree> --base <baseSha>`),
   it: refuses a **dirty tree** (only committed work merges, so only committed
   work verifies); re-runs the **full fast tier** plus the ticket's
   `acceptanceChecks` — exit codes decide, not the builder's transcript — even
@@ -300,7 +300,7 @@ for a single-ticket dispatch you run the script and read the diff yourself.
   manifest allowlist (an undeclared touch **fails the ticket** with the
   overflow listed — this is what lets the parallelism scheduler trust
   `files`); and dumps the evidence and the diff patch into
-  `.ailoop/evidence/`. Its `failing` array is stable check *names* — it
+  `.ailoop/run/evidence/`. Its `failing` array is stable check *names* — it
   becomes the `attempts` entry's `failed` set, verbatim. `baseSha` is the fork
   point you captured (`git rev-parse HEAD`) immediately before dispatch — the
   script is handed it, never left to guess a merge-base.
@@ -422,15 +422,21 @@ honest. "Frozen" means never *silently* changed — not never changed:
 
 ## Stage 1 — Intake (first invocation only)
 
-`.ailoop/` absent → this invocation starts the campaign: **read
+`.ailoop/run/` — **not** `.ailoop/` — is the campaign marker. `.ailoop/` is a
+permanent container that can outlive any single campaign (it holds
+`learnings/`, which accumulates across runs — see **Durable state**); only
+`.ailoop/run/` is created at intake and deleted at termination. Test for
+`run/`, never the container.
+
+`.ailoop/run/` absent → this invocation starts the campaign: **read
 `references/intake.md` and follow it** before any other action. It locates the
-locked spec, derives the executable per-phase oracle and the baseline tiers,
-enforces the refuse-to-start gate, seeds the backlog, red-teams every
-acceptance, sets the caps, gitignores the campaign, and reports the pre-flight
-to the human. Intake is the only stage that may interrupt the human (Prime
+locked spec, primes from any prior `.ailoop/learnings/`, derives the executable
+per-phase oracle and the baseline tiers, enforces the refuse-to-start gate,
+seeds the backlog, red-teams every acceptance, sets the caps, gitignores the
+campaign, and reports the pre-flight to the human. Intake is the only stage that may interrupt the human (Prime
 directive 1).
 
-`.ailoop/` present → a previous run already did intake; never re-pick the spec
+`.ailoop/run/` present → a previous run already did intake; never re-pick the spec
 (`oracle.md`'s contract identity names it) — see **Resume**.
 
 ---
@@ -440,7 +446,7 @@ directive 1).
 Work off the backlog. One turn of the loop:
 
 ### 2.1 Pull ready tickets
-Run `node .ailoop/schedule.mjs` and read its output — never compute readiness,
+Run `node .ailoop/run/schedule.mjs` and read its output — never compute readiness,
 batches, breaches, thrash, phase drain, or completion by eye (Prime
 directive 6):
 - `problems` or `cycles` non-empty → fix the graph if it's your bookkeeping
@@ -527,7 +533,7 @@ anyway — none of it touches in-flight tickets:
   red-team never sits on the critical path.
 - **Coverage map and ledger upkeep.**
 
-Write every result into the `.ailoop/` files as it lands — prep held only in
+Write every result into the `.ailoop/run/` files as it lands — prep held only in
 context dies at compaction. Prefer cheap background agents over your
 own context for the fan-out parts; your context is the loop's scarcest
 resource.
@@ -535,7 +541,7 @@ resource.
 ### 2.3 Judge each result
 The judgment the inner body cannot do:
 - **`done` + independent re-verify green + in scope** → mark the ticket
-  `done`, write the **re-verify** evidence to `.ailoop/evidence/<id>.txt` and
+  `done`, write the **re-verify** evidence to `.ailoop/run/evidence/<id>.txt` and
   store the pointer on the ticket, update the backlog. **Then capture the
   per-ticket sidecars now** (2.3b) — this is the only moment the worker's
   transcript still exists.
@@ -615,7 +621,7 @@ capturing later is a new file, never a code change. Write these on every
 accept:
 
 - **`<id>.timing.json`** — run
-  `node .ailoop/timing.mjs --ticket <id> <transcript-path> [<more paths>]`
+  `node .ailoop/run/timing.mjs --ticket <id> <transcript-path> [<more paths>]`
   immediately on accept, passing the worker's transcript(s) (build + any
   verify/gaming + a resume all aggregate). The transcript path is the
   `output-file` from the `<task-notification>` (direct dispatch) or the
@@ -659,23 +665,23 @@ Then loop back to 2.1.
 
 A run ends one of two ways — length, compaction, or dispatches spent are never
 endings. (An *interrupted* run — killed session, crash — is not an ending
-either: the next invocation picks it up from `.ailoop/`; see **Resume**.)
+either: the next invocation picks it up from `.ailoop/run/`; see **Resume**.)
 
 1. **Backlog drained (`complete: true`) and every phase oracle green** →
    **read `references/termination.md` and follow it**: the coverage pass
    (unmapped spec requirements mean the build is NOT done), the final report
    (run audit + per-ticket dossier via `report.mjs --out`, oracle evidence,
    coverage, drift — computed, not narrated), and the campaign close (flip the
-   spec to `done`, delete `.ailoop/`). Never close a campaign — or report the
+   spec to `done`, delete `.ailoop/run/`). Never close a campaign — or report the
    build done — without it.
-2. **Escalation** — closes nothing: the spec stays `locked` and `.ailoop/`
+2. **Escalation** — closes nothing: the spec stays `locked` and `.ailoop/run/`
    stays put, so the resolved escalation resumes exactly where it stopped.
    The report is "stuck at ticket T, here's the wall and the decision I
    need" — never a rosy summary of a loop that didn't finish.
 
 ## Resume — after an interruption or a resolved escalation
 
-`.ailoop/` exists → a previous run already did intake; skip it entirely. Read
+`.ailoop/run/` exists → a previous run already did intake; skip it entirely. Read
 `oracle.md`, the ledger tail,
 and run the scheduler. Reconcile before dispatching. If the last run ended on an
 escalation, open with a stamped `resume`-kind ledger entry (subject `run`) — it
@@ -698,7 +704,7 @@ credits that idle time to the human, not the loop.
   re-verify it like any worker result (green → judge, merge; red → reset to
   `todo` with an `attempts` entry noting the interrupted run). No branch →
   nothing durable happened; reset to `todo`.
-- **Legacy formats** (a markdown `backlog.md`, or a *tracked* `.ailoop/` /
+- **Legacy formats** (a markdown `backlog.md`, or a *tracked* `.ailoop/run/` /
   `specs/`, from an older version of this skill): convert to `backlog.json` /
   `git rm -r --cached` + gitignore once on first resume, preserving all
   tickets and history verbatim; ledger entry.
@@ -711,20 +717,39 @@ more into the ticket/ledger *this* run, not to try to remember harder.
 
 ## Durable state — the `.ailoop/` directory
 
-Trust these files over your recollection; they are what survives context
-compaction and an interrupted run. The directory is untracked (intake step 7) and
-lives exactly as long as its campaign — created at intake, deleted at
-termination — so its presence is what marks which spec is in flight.
+`.ailoop/` holds two subtrees with **opposite lifetimes** — never conflate them:
+
+- **`.ailoop/run/`** — the campaign's working memory. Untracked (intake step 7),
+  created at intake, **deleted at termination**; its presence is what marks a
+  spec in flight. "Durable" here means durable *through compaction and an
+  interrupted run* — trust these files over your recollection — not across
+  campaigns.
+- **`.ailoop/learnings/`** — the cross-campaign store, tracked in git (unlike
+  `run/`) and preserved across termination. Five facets, each written at one
+  termination step (**harvest**, references/termination.md) and consumed at one
+  intake decision point (**Prime**, references/intake.md): `checks.json`
+  (verified toolchain commands + quirks → toolchain detection / baseline),
+  `flakes.json` (known flakes + discriminators → quarantine set), `sizing.md`
+  (decompose-preemptively priors → seeding), `patterns.md` (gaming shapes +
+  blind spots → red-team), `landmines.md` (codebase surprises → worker context).
+  Priors flow into the *same* `oracle.md` / `backlog.json` the loop already uses
+  — no separate runtime consumer — and every primed entry is re-confirmed or
+  retired that run (the **validate guard**). The two keyed-JSON facets merge via
+  `learn.mjs`; the three prose facets are coordinator-authored.
+
+The `run/` files, in detail:
 
 - **`backlog.json`** — the **forward** state and the loop driver: tickets with
   status, phase, dependencies, per-ticket `attempts` logs. Bulk never lives
   here — captured output goes to `evidence/`.
-- **`schedule.mjs`** / **`verify.mjs`** / **`report.mjs`** / **`timing.mjs`**
-  — the deterministic scripts, copied from templates at intake: scheduler
-  (see **The scheduler**), mechanical verifier + flake probe + resource
-  leases (see **Verification**), run auditor + dossier assembler (see
-  **Termination**), and per-ticket transcript parser (see **2.3b**).
-  Arithmetic lives in them, never in your eyeballing (Prime directive 6).
+- **`schedule.mjs`** / **`verify.mjs`** / **`report.mjs`** / **`timing.mjs`** /
+  **`learn.mjs`** — the deterministic scripts, copied from templates at intake:
+  scheduler (see **The scheduler**), mechanical verifier + flake probe +
+  resource leases (see **Verification**), run auditor + dossier assembler (see
+  **Termination**), per-ticket transcript parser (see **2.3b**), and the
+  cross-campaign learning merge (harvest's arithmetic half — see
+  references/termination.md). Arithmetic lives in them, never in your eyeballing
+  (Prime directive 6).
 - **`oracle.md`** — the **definition of done**: locked decisions, the scope
   tripwire list, the baseline gate, the executable per-phase checks, the
   contract identity, and the spec→delivery coverage map. Written at intake;
@@ -763,7 +788,7 @@ judge decision.
       (clean tree, full fast tier + `acceptanceChecks`, scope ⊆ declared ∪
       manifest allowlist, no baseline regression) + the gaming read (skipped
       only for `scaffold` tickets).
-- [ ] Evidence written to `.ailoop/evidence/` and pointed at — never inlined
+- [ ] Evidence written to `.ailoop/run/evidence/` and pointed at — never inlined
       into `backlog.json`.
 - [ ] On accept, per-ticket sidecars captured **while the transcript still
       exists** (2.3b): timing, cost, findings.
@@ -775,7 +800,7 @@ judge decision.
 - [ ] Nothing built crosses the out-of-scope list.
 - [ ] `backlog.json` and `ledger.md` updated — ledger entry appended with a
       live-`date` stamp and a `kind` in its header; coverage map current.
-- [ ] Nothing under `.ailoop/` or `specs/` staged or committed — campaign
+- [ ] Nothing under `.ailoop/run/` or `specs/` staged or committed — campaign
       state stays untracked; the rare mainline commit you author yourself
       goes through the `commit` skill.
 
@@ -783,7 +808,7 @@ judge decision.
 
 - **One invocation, one run to done.** No dispatch cap and no mid-run
   checkpoint: the run ends at completion or escalation, however many hours and
-  phases that takes. The `.ailoop/` files are the only memory across compaction
+  phases that takes. The `.ailoop/run/` files are the only memory across compaction
   and interruptions.
 - **No token budgeting.** The main loop has no spend gauge, so a token cap
   would be enforced by guesswork — and fictional numbers in the audit trail are

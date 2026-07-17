@@ -8,10 +8,10 @@
 // Dependency-free; Node >= 18.
 //
 // Usage:
-//   node .ailoop/timing.mjs --ticket <id> [--out <path>] <transcript> [<transcript> ...]
+//   node .ailoop/run/timing.mjs --ticket <id> [--out <path>] <transcript> [<transcript> ...]
 //     <transcript>  one or more JSONL paths (a ticket may span build + verify +
 //                   gaming + a resume — pass them all; they aggregate).
-//     --out         default .ailoop/evidence/<id>.timing.json
+//     --out         default .ailoop/run/evidence/<id>.timing.json
 //
 // Attribution: each transcript event is charged the time delta to the next event.
 // A Bash tool_use → its command category; an Edit/Write → implementation; a model
@@ -26,10 +26,10 @@ const opt = f => { const i = argv.indexOf(f); return i === -1 ? undefined : argv
 const ticket = opt('--ticket')
 const files = argv.filter((a, i) => !a.startsWith('--') && argv[i - 1] !== '--ticket' && argv[i - 1] !== '--out')
 if (!ticket || files.length === 0) {
-  console.error('usage: node .ailoop/timing.mjs --ticket <id> [--out <path>] <transcript.jsonl> [<transcript.jsonl> ...]')
+  console.error('usage: node .ailoop/run/timing.mjs --ticket <id> [--out <path>] <transcript.jsonl> [<transcript.jsonl> ...]')
   process.exit(2)
 }
-const out = opt('--out') ?? join('.ailoop/evidence', `${ticket}.timing.json`)
+const out = opt('--out') ?? join('.ailoop/run/evidence', `${ticket}.timing.json`)
 
 const classifyBash = (cmd) => {
   const c = (cmd ?? '').toLowerCase()

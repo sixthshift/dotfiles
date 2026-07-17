@@ -2,7 +2,7 @@
 // ailoop run audit + per-ticket dossier — the termination report. schedule.mjs
 // answers "where IS the loop?"; this answers "where did the TIME go, and what
 // happened inside each ticket?" Two sources, both durable through the run and
-// gone only at close (so this must run BEFORE .ailoop/ is deleted, writing to a
+// gone only at close (so this must run BEFORE .ailoop/run/ is deleted, writing to a
 // path OUTSIDE it — see SKILL.md Termination):
 //   1. ledger.md  — the timestamped entry headers (wall-clock, phases, work mix).
 //   2. evidence/<id>.*.json — per-ticket sidecars captured AT ACCEPT (timing,
@@ -12,7 +12,7 @@
 // time. Dependency-free; Node >= 18.
 //
 // Usage:
-//   node .ailoop/report.mjs [--ledger <p>] [--backlog <p>] [--evidence <dir>] [--out <file>]
+//   node .ailoop/run/report.mjs [--ledger <p>] [--backlog <p>] [--evidence <dir>] [--out <file>]
 //     --out  write the full report to <file> (e.g. specs/<spec>.run-report.md)
 //            AND still print it; omit to only print.
 import { readFileSync, writeFileSync, existsSync, readdirSync, mkdirSync } from 'node:fs'
@@ -22,9 +22,9 @@ const argv = process.argv.slice(2)
 const flag = f => { const i = argv.indexOf(f); return i === -1 ? undefined : argv[i + 1] }
 // Back-compat: first two bare args are still [ledger] [backlog].
 const bare = argv.filter((a, i) => !a.startsWith('--') && !(argv[i - 1] ?? '').startsWith('--'))
-const ledgerPath = flag('--ledger') ?? bare[0] ?? '.ailoop/ledger.md'
-const backlogPath = flag('--backlog') ?? bare[1] ?? '.ailoop/backlog.json'
-const evidenceDir = flag('--evidence') ?? '.ailoop/evidence'
+const ledgerPath = flag('--ledger') ?? bare[0] ?? '.ailoop/run/ledger.md'
+const backlogPath = flag('--backlog') ?? bare[1] ?? '.ailoop/run/backlog.json'
+const evidenceDir = flag('--evidence') ?? '.ailoop/run/evidence'
 const outPath = flag('--out')
 
 const HEADER = /^\[\s*(\d+)\s*\|\s*([^|]+?)\s*\|\s*([^|]+?)\s*\|\s*([^\]]+?)\s*\]/
