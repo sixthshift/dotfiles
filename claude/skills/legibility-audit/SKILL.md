@@ -7,7 +7,7 @@ description: Grade a codebase on how findable and trustable its structure is for
 
 Grade the repo's structure against a single reader model: **someone with zero memory of it** — the author two years later, or an agent at session start. Structure is good exactly insofar as it lets that reader load only what's relevant and trust it's complete.
 
-The judgment layer lives in `voice/coding.md` (ambient via CLAUDE.md) — this file is procedure only; cite the voice for rationale, don't restate it. This audit checks honesty *at rest* (does the structure tell the truth). Correctness, runtime honesty (fail-loud, boundary validation), and style are out of scope — those belong to code review and typecheck.
+The judgment layer lives in `voice/coding.md` (ambient via the global `CLAUDE.md` or `AGENTS.md`) — this file is procedure only; cite the voice for rationale, don't restate it. This audit checks honesty *at rest* (does the structure tell the truth). Correctness, runtime honesty (fail-loud, boundary validation), and style are out of scope — those belong to code review and typecheck.
 
 ## The checks
 
@@ -18,11 +18,11 @@ Each is a question with a falsifiable answer, not a preference:
 3. **Names must not lie.** Worst defect class: a misleading name sends the reader confidently in the wrong direction (e.g. `format.ts` sitting beside `format-v2.ts` but holding a default constant, not the legacy version). Generic names (`utils`, `helpers`, `common`, `misc`, proliferating bare `index`) are the lesser form — they force opening the file to learn what the name should have said.
 4. **Read-once sizing.** Split by semantics, not line count — a long file that is genuinely one concern passes. But past read-at-once size (~500 lines as a flag, not a law) the reader greps-and-windows and loses surrounding invariants; section-comment banners are a confession the file holds several concerns.
 5. **Single sources of truth.** Registries and contract files that answer a whole category in one read are worth more than perfect placement of the same knowledge scattered. Their absence for a repeated concern is a finding.
-6. **The index tells the truth.** CLAUDE.md / README pointers are the highest-leverage lines in the repo — they convert searches into direct reads. Check them against the actual tree; a stale index is a misleading name at repo scale.
+6. **The index tells the truth.** AGENTS.md / CLAUDE.md / README pointers are the highest-leverage lines in the repo — they convert searches into direct reads. Check them against the actual tree; a stale index is a misleading name at repo scale.
 
 ## Procedure
 
-1. **Map before territory.** Read the index docs first (CLAUDE.md, README, architecture notes). The audit later verifies them against the tree — note claims as you read.
+1. **Map before territory.** Read the index docs first (AGENTS.md, CLAUDE.md, README, architecture notes). The audit later verifies them against the tree — note claims as you read.
 2. **Census.** Full file list (`find`, skip vendored/generated) + line counts sorted descending. Flag: size outliers, generic names, barrel/index files, casing or convention splits, sibling names that look like versions or duplicates of each other.
 3. **Guess-test** per check 1, using domain vocabulary from the index docs.
 4. **Open only the suspects.** For each flagged file, read enough (head + structure) to answer its check — name-vs-content for suspected liars, banner-scan for oversized files, both candidates for suspected parallel homes. Do not read the whole repo; the audit models a navigating reader, not an exhaustive one.

@@ -143,7 +143,7 @@ Then stamp `status: locked` and hand off: **"run `/ailoop`."**
 
 - **Contrast questions over open-ended ones.** Never ask "can you elaborate
   on X?" Present 2–4 *concrete interpretations* — "a builder could read this
-  as (a) …, (b) …, (c) … — which did you mean?" — via AskUserQuestion, so
+  as (a) …, (b) …, (c) … — which did you mean?" — ask directly, so
   ambiguity is surfaced as a choice, not an essay assignment. Each rejected
   interpretation is out-of-scope material; harvest it.
 - **Behavioral probes.** "Give me a real input and the output you'd expect —
@@ -186,7 +186,7 @@ Then stamp `status: locked` and hand off: **"run `/ailoop`."**
 - **Harvest out-of-scope explicitly.** Humans never volunteer what NOT to
   build. Ask directly, and mine rejected interpretations and "maybe later"
   answers — the tripwire list is built from exactly those.
-- **Batch and budget.** Up to 4 questions per AskUserQuestion call, related
+- **Batch and budget.** Up to 4 questions per round, related
   ones together, at most a couple of rounds per session. A large backlog gets
   triaged, not marched through: ask the load-bearing forks, default the rest.
 
@@ -214,7 +214,7 @@ the human, don't infer:
      new spec.
   2. **Still binding on future work** (stack, data model, "never do X" as
      permanent policy — anything constraining work that doesn't exist yet)
-     → promote to the repo's durable docs (CLAUDE.md, docs/) if not already
+     → promote to the repo's durable docs (AGENTS.md, CLAUDE.md, docs/) if not already
      there; the new spec **cites** it as standing, never restates it.
   3. **Campaign-relative** (phases and ordering, done-means checks — already
      graduated into the test suite — this drive's out-of-scope tripwire,

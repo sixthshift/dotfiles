@@ -1,13 +1,13 @@
 ---
 name: new-project
-description: Scaffold a fresh Bun/TypeScript project end-to-end, wiring the pieces I always want and the one I keep forgetting — the project-level TypeScript LSP for Claude. Orchestrates bun init, the LSP gate, a project CLAUDE.md stub, the devcontainer skill, and an optional aispec handoff. Use when starting a new project from scratch.
+description: Scaffold a fresh Bun/TypeScript project end-to-end, wiring the pieces I always want and the one I keep forgetting — the project-level TypeScript LSP for Claude. Orchestrates bun init, the Claude LSP gate, project CLAUDE.md and AGENTS.md stubs, the dual-agent devcontainer skill, and an optional aispec handoff. Use when starting a new project from scratch in Claude or Codex.
 ---
 
 # New Project Scaffold
 
 The front door for a new repo. It exists for one reason above the others: **the project-level TypeScript LSP config keeps getting dropped when I create projects by hand.** Everything else here is glue that guarantees that step is never skipped again.
 
-This is an **orchestrator, not a template dump**. The stack skeleton comes from `bun init` (idiomatic, self-updating); the devcontainer comes from the `devcontainer` skill. This skill owns only the Claude-layer glue and the sequencing.
+This is an **orchestrator, not a template dump**. The stack skeleton comes from `bun init` (idiomatic, self-updating); the devcontainer comes from the `devcontainer` skill. This skill owns only the agent-layer glue and the sequencing.
 
 Assumes a **Bun/TypeScript** project. For other stacks, this skill doesn't apply — scaffold by hand.
 
@@ -59,9 +59,9 @@ Enable the TypeScript language server (once per machine):
 
 The env gate is committed to the repo; the binary is a per-machine prerequisite. State plainly if it's absent so the LSP isn't silently dead.
 
-### 5. Seed a project CLAUDE.md stub
+### 5. Seed project instruction stubs
 
-Write a minimal `CLAUDE.md` for **project-specific** guidance only. The global `~/.claude/CLAUDE.md` and coding voice already layer on top of every project automatically — do not restate or re-point at them here. A short stub naming the project and any early constraints is enough; leave it thin and let it grow per touch.
+Write minimal `CLAUDE.md` and `AGENTS.md` files for **project-specific** guidance only. The global personal instructions and coding voice already layer on top automatically — do not restate or re-point at them here. Keep both stubs semantically identical: name the project and any early constraints, then let them grow per touch.
 
 ### 6. Devcontainer
 
@@ -73,4 +73,4 @@ Ask whether to start a spec now via the `aispec` skill (the front of the `aispec
 
 ## Close out
 
-Report: directory scaffolded, LSP gate written, whether the language-server binary was found (and the install line if not), devcontainer result, and whether an aispec session was started. Do not commit — staging and `git commit` are the user's call.
+Report: directory scaffolded, Claude LSP gate written, both project instruction files created, whether the language-server binary was found (and the install line if not), devcontainer result, and whether an aispec session was started. Do not commit — staging and `git commit` are the user's call.

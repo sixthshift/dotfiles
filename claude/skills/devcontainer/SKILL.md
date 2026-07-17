@@ -38,7 +38,7 @@ In-container connections always use the service name and default port (`db:5432`
 
 Derive from the repo:
 - **Project name** (directory / package.json name) → container names, volume prefix.
-- **Runtime**: is this a Bun/TypeScript project? If not (Python, etc.), this skill's templates don't apply — scaffold a standalone setup by hand, keeping only the Claude-layer conventions (claude-config volume, containerEnv, usage doc, no socket, no key mounts).
+- **Runtime**: is this a Bun/TypeScript project? If not (Python, etc.), this skill's templates don't apply — scaffold a standalone setup by hand, keeping only the agent-layer conventions (Claude and Codex config volumes, containerEnv, usage doc, no socket, no key mounts).
 - **Database**: drizzle config, `DATABASE_URL` references, existing compose `db` service → postgres sidecar default.
 - **Testcontainers**: `testcontainers` in deps → DinD sidecar default.
 - **Playwright**: in deps → browser install default.
@@ -47,7 +47,7 @@ Derive from the repo:
 
 ### 2. Interview (one batched round, then run silently)
 
-Ask via a single AskUserQuestion round, proposing detection-based defaults:
+Ask in a single round, proposing detection-based defaults:
 1. **Sidecar services** — default from detection (postgres / none). Mention the DinD sidecar if testcontainers was detected.
 2. **Ports to forward** — propose the detected list for confirmation.
 3. **Extras** — Playwright, drizzle-kit: default from detection.
@@ -61,7 +61,7 @@ From `templates/`, fill placeholders (`{{PROJECT}}`, port labels, optional block
 - `.devcontainer/Dockerfile`
 - `.devcontainer/docker-compose.dev.yml`
 - `.devcontainer/shell-config.sh`
-- `.devcontainer/CLAUDE_CODE_USAGE.md`
+- `.devcontainer/CLAUDE_CODE_USAGE.md` (covers both Claude Code and Codex)
 - `.devcontainer/.env.example` (and an empty-ish `.env`); verify `.env` is gitignored — add `.devcontainer/.env` to `.gitignore` if not.
 - **`.claude/settings.json` at the repo root** (not under `.devcontainer/`) — the committed project-settings home. If absent, write `{"$schema": "https://json.schemastore.org/claude-code-settings.json", "env": {"ENABLE_LSP_TOOL": "1"}}`. If it already exists, **merge** the `env.ENABLE_LSP_TOOL` key in — never clobber a collaborator's existing project settings.
 
@@ -82,14 +82,14 @@ From `templates/`, fill placeholders (`{{PROJECT}}`, port labels, optional block
 Emit these always; do not drop them even if they look optional:
 
 - **`remoteUser: root`** — dev convenience inside an isolated container. The historical `vscode`-user fork (decryptid, petrol-patrol) is where the claude-config volume got lost and dead shell-config bugs crept in. Root-only.
-- **`claude-config` named volume → `/root/.claude`** — Claude auth and settings survive rebuilds. Note: compose namespaces volumes per project, so auth is per-project by design (login once per project).
+- **Separate config volumes** — `claude-config` → `/root/.claude` and `codex-config` → `/root/.codex`, so each agent's auth and settings survive rebuilds. Compose namespaces volumes per project, so auth is per-project by design (login once per project and agent).
 - **`{{PROJECT}}-node-modules` named volume** — the host (macOS) and container (Linux) must not share one bind-mounted `node_modules`: native binaries are platform-specific and `bun install` only materializes the current platform's. The most-dropped element historically; always emit it.
 - **No `~/.ssh` mount. Ever.** Git auth comes from SSH **agent forwarding**: VS Code forwards `SSH_AUTH_SOCK` automatically when `ssh-agent` runs on the host. Keys never enter the container, so an agent running with skipped permissions cannot read or exfiltrate them. Requires `ssh-add --apple-use-keychain` (or `AddKeysToAgent yes`) on the host — documented in the usage doc.
 - **`~/.gitconfig:ro` mount** — commit identity and signing config inside the container.
 - **No raw docker socket. Ever.** `/var/run/docker.sock` in a root container is host root (a created container can bind-mount `/Users` through the Docker Desktop VM). Projects needing Docker (testcontainers) get the **DinD sidecar**: an isolated daemon at `DOCKER_HOST=tcp://docker:2375`; binds made there only see the sidecar's filesystem. Costs: the sidecar is privileged (agent can only reach its TCP API, never the container itself) and has its own image cache.
 - **`containerEnv`**: `CLAUDE_CONFIG_DIR=/root/.claude`, `IS_SANDBOX=1`. Container-runtime facts only — the LSP gate does **not** live here. It's a project policy, equally true on the host, so it belongs in the committed `.claude/settings.json` (next).
 - **Committed `.claude/settings.json` at the repo root** — the home for project-wide Claude policy that must apply on host *and* in-container (project settings are read from the project tree regardless of `CLAUDE_CONFIG_DIR`). Emit it carrying the LSP gate `{"env": {"ENABLE_LSP_TOOL": "1"}}` — singular; the plural `ENABLE_LSP_TOOLS` is a silent no-op, absent from the Claude Code binary. This is the LSP *gate*; the language-server binary below is what it drives — the two are separate and both required.
-- **Claude Code + OpenAI Codex CLIs** — both installed in the invariant Dockerfile block via their official `install.sh` scripts (standalone binaries → `/root/.local/bin`). Both are standard agent tooling, not extras; unpinned (latest at build) like Claude Code. Note: neither has an auth-persistence volume by default beyond `claude-config` → `/root/.claude`; Codex auth lives in `/root/.codex` and is lost on rebuild unless a `codex-config` volume is added (offer it if the user runs Codex regularly in-container).
+- **Claude Code + OpenAI Codex CLIs** — both installed in the invariant Dockerfile block via their official `install.sh` scripts (standalone binaries → `/root/.local/bin`). Both are standard agent tooling, not extras; unpinned (latest at build) like Claude Code. Their auth and settings persist in separate named volumes: `claude-config` → `/root/.claude`, `codex-config` → `/root/.codex`.
 - **`shell-config.sh` with the `clauded` and `codexd` aliases** (`claude --dangerously-skip-permissions` / `codex --yolo`), copied to `/root/.shell-config.sh` and sourced from `/root/.bashrc`.
 - **Go + mcp-language-server + typescript-language-server** — the language-server binaries the LSP tool drives; part of the standard, not an extra. The gate that *activates* the tool lives in the committed `.claude/settings.json` (above), not here — binary and gate are separate.
 - **`command: sleep infinity`**, `workspaceFolder`/`working_dir` `/workspace`, workspace bind `..:/workspace:cached`.

@@ -20,6 +20,7 @@ services:
       # materializes the current platform's. postCreateCommand repopulates it.
       - {{PROJECT}}-node-modules:/workspace/node_modules
       - claude-config:/root/.claude
+      - codex-config:/root/.codex
       # Commit identity + signing config. SSH keys are deliberately NOT
       # mounted — git auth uses SSH agent forwarding (VS Code forwards
       # SSH_AUTH_SOCK automatically when ssh-agent runs on the host).
@@ -89,6 +90,8 @@ volumes:
   {{PROJECT}}-node-modules:
     driver: local
   claude-config:
+    driver: local
+  codex-config:
     driver: local
   # {{IF_POSTGRES}}
   postgres-data:

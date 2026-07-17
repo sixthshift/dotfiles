@@ -4,7 +4,8 @@ Personal configuration that travels across machines.
 
 ## Layout
 
-- `claude/` — Claude Code user-level config (CLAUDE.md, skills, agents, hooks, settings)
+- `claude/` — master agent config (Claude instructions, voice, portable skills, agents, hooks, settings)
+- `codex/` — Codex-only adapters and skills; shared content links from `claude/`
 - `shell/` — shell configuration (.bashrc, .zshrc, .shell-config.sh)
 - `git/` — git configuration (.gitconfig, global ignore)
 - `editor/` — editor configuration (nvim, vim, vscode)
@@ -24,14 +25,26 @@ cd ~/dotfiles
 ## What syncs vs what stays local
 
 **Tracked in git** (portable):
-- `claude/CLAUDE.md` — universal instructions
-- `claude/skills/`, `claude/agents/`, `claude/hooks/` — portable skills/agents/hooks
+- `claude/CLAUDE.md` — universal instructions, installed for Claude and Codex
+- `claude/skills/`, `claude/agents/`, `claude/hooks/` — master portable skills/agents/hooks
+- `codex/skills/ailoop-codex/` — Codex-native autonomous build loop
 - `claude/settings.json` — global preferences (model, theme, defaults)
 
 **Gitignored** (machine-specific or sensitive):
 - `~/.claude/settings.local.json` — local permissions, MCP server paths
 - `~/.claude/projects/`, `sessions/`, `history.jsonl`, `plugins/`, `cache/`, etc. — runtime state, never in git
+- `~/.codex/config.toml`, auth, sessions, plugins, cache, and project trust — machine-local runtime state, never replaced by `install.sh`
 - Anything in `.gitignore`
+
+## Claude and Codex
+
+`claude/` is authoritative. The installer exposes the same universal
+instructions and six portable skills to Codex through `~/.codex/AGENTS.md` and
+individual symlinks under `~/.agents/skills`.
+
+Claude's Workflow-based `ailoop` is deliberately excluded from Codex. Codex
+gets `ailoop-codex` instead, which preserves the aispec/`.ailoop` contract but
+uses Codex subagents and explicit Git worktrees.
 
 ## Adding a new tool
 

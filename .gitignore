@@ -18,6 +18,14 @@ claude/session-env/
 claude/backups/
 claude/debug/
 
+# Machine-specific Codex settings and runtime state
+codex/config.toml
+codex/auth.json
+codex/sessions/
+codex/cache/
+codex/log/
+codex/tmp/
+
 # OS junk
 .DS_Store
 Thumbs.db

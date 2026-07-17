@@ -38,6 +38,20 @@ link "claude/hooks"          "$HOME/.claude/hooks"
 # Uncomment once you've populated it (review the file first):
 # link "claude/settings.json"  "$HOME/.claude/settings.json"
 
+# --- Codex ---
+# Claude remains the master copy for shared instructions, voice, and portable
+# skills. Link skills individually so Claude-only ailoop is not exposed to
+# Codex; ailoop-codex is the native Codex coordinator.
+link "claude/CLAUDE.md"                    "$HOME/.codex/AGENTS.md"
+link "claude/voice"                        "$HOME/.codex/voice"
+link "claude/skills/aispec"                "$HOME/.agents/skills/aispec"
+link "claude/skills/commit"                "$HOME/.agents/skills/commit"
+link "claude/skills/devcontainer"          "$HOME/.agents/skills/devcontainer"
+link "claude/skills/dotfiles-sync"         "$HOME/.agents/skills/dotfiles-sync"
+link "claude/skills/legibility-audit"      "$HOME/.agents/skills/legibility-audit"
+link "claude/skills/new-project"           "$HOME/.agents/skills/new-project"
+link "codex/skills/ailoop-codex"           "$HOME/.agents/skills/ailoop-codex"
+
 # --- Shell ---
 # Uncomment as you populate. Pick the shell(s) you actually use.
 # link "shell/.zshrc"          "$HOME/.zshrc"

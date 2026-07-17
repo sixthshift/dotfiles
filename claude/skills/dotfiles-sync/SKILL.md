@@ -1,6 +1,6 @@
 ---
 name: dotfiles-sync
-description: Sync the dotfiles repo with its remote — commit and push local changes via the commit skill, pull remote changes, or both. Use when asked to sync, push, or pull dotfiles, or after editing anything in the dotfiles repo (including ~/.claude/skills, which symlinks into it).
+description: Sync the dotfiles repo with its remote — commit and push local changes via the commit skill, pull remote changes, or both. Use when asked to sync, push, or pull dotfiles, or after editing installed Claude or Codex skills that symlink into it.
 ---
 
 # Dotfiles Sync
@@ -17,11 +17,11 @@ Optional argument pins the intent:
 - Repo location: not fixed — the clone can live anywhere. Resolve it first and substitute the result for `$DOTFILES` in every command below:
 
   ```bash
-  DOTFILES="$(git -C "$(readlink ~/.claude/skills)" rev-parse --show-toplevel)"
+  DOTFILES="$(git -C "$(dirname "$(realpath ~/.claude/skills/dotfiles-sync)")" rev-parse --show-toplevel)"
   ```
 - Branch `main`, remote `origin` on GitHub. The repo is **public** — the secrets gate below is mandatory.
 - Transport is per-machine (VS Code's dotfiles feature clones over HTTPS): if push fails on auth, push one-off over SSH (`git push git@github.com:<owner>/dotfiles.git main`) — don't rewrite the remote.
-- `~/.claude/skills` symlinks to `claude/skills/` inside this repo, so this skill syncs itself and its sibling skills. A pull can change skills available to the *running* session — always report skill changes.
+- `~/.claude/skills` is the master installation; Codex receives selected skill symlinks under `~/.agents/skills`. A pull can change skills available to the *running* session — always report skill changes for both agents.
 
 ## Procedure
 
@@ -43,7 +43,7 @@ Only with a clean working tree:
 git -C "$DOTFILES" pull --ff-only origin main
 ```
 
-Then report what changed (`git diff --stat ORIG_HEAD..HEAD`), calling out anything under `claude/` explicitly — new or updated skills, settings, or CLAUDE.md affect live Claude sessions.
+Then report what changed (`git diff --stat ORIG_HEAD..HEAD`), calling out anything under `claude/` or `codex/` explicitly — new or updated skills and instructions can affect live agent sessions.
 
 If the tree is dirty and the intent was `pull`: stop and report the dirty files — do not stash or discard on the user's behalf.
 
@@ -73,4 +73,4 @@ Order: local commits first, then reconcile, then push.
 
 ### 5. Report
 
-Always end with: direction(s) taken, commits created (messages), what was pulled (files, with `claude/` changes highlighted), and current state (`in sync with origin/main`).
+Always end with: direction(s) taken, commits created (messages), what was pulled (files, with `claude/` and `codex/` changes highlighted), and current state (`in sync with origin/main`).
