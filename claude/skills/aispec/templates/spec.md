@@ -15,8 +15,8 @@ spec_version: 1          # bumped by change orders after lock
      error behavior, "do not add X" lists. aispec locks conventional defaults
      loudly and lists them for override; the human decides the genuine forks.
      Standing constraints inherited from previous drives are CITED from the
-     repo's durable docs, never restated. ailoop copies this block into
-     oracle.md verbatim; workers cite it. -->
+     repo's durable docs, never restated. ailoop seeds the backlog's locked
+     decisions from this block; workers cite it. -->
 
 - Stack: ...
 - Data model: ...
@@ -84,8 +84,8 @@ spec_version: 1          # bumped by change orders after lock
      here (date · change · rationale), bump spec_version, then apply it above.
      ailoop's next resume detects the changed hash and stops to reconcile —
      this section is what that reconciliation reads, so say what changed and
-     why. A change to what counts as done also goes through ailoop's semantic
-     amendment tier if a drive is in flight. -->
+     why. A change to what counts as done also goes through ailoop's
+     meaning-level amendment tier if a drive is in flight. -->
 
 ## Braindump (raw)
 

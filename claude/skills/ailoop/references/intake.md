@@ -1,164 +1,87 @@
-# Stage 1 — Intake & Oracle Contract
+# Intake — starting a campaign
 
-Read via SKILL.md's router on the **first invocation only** (`.ailoop/run/` absent;
-see **Resume** in SKILL.md for re-invocations). Produce `.ailoop/run/oracle.md`,
-`.ailoop/run/backlog.json`, and `.ailoop/run/ledger.md` (templates in `templates/`),
-copy `templates/schedule.mjs`, `templates/verify.mjs`, `templates/report.mjs`,
-`templates/timing.mjs`, and `templates/learn.mjs` into `.ailoop/run/`, and
-create `.ailoop/run/evidence/` for captured check output and per-ticket
-sidecars. This is the pre-flight; the human sees it and the drive runs
-unattended after.
+Only runs when `.ailoop/run/` is absent. Steps, in order:
 
-## Prime from `.ailoop/learnings/` (if present)
+## 0. Locate the spec and refuse-to-start gate
 
-A prior campaign in this repo may have left `.ailoop/learnings/` — the durable
-cross-campaign store (SKILL.md — Durable state). Read it **first** and seed
-intake's normal artifacts from it. There is no separate runtime consumer: priors
-flow into the *same* `oracle.md` / `backlog.json` the loop already uses.
+Find the locked spec the human pointed at. Read it fully. Then answer: **is
+"done" machine-checkable?** Every phase must reduce to commands whose exit
+codes settle the question. If any phase's done-ness is vibes ("the UX should
+feel snappy"), stop and ask the human for the executable version. This is the
+only permitted interruption in a healthy run — spend it here, never mid-drive.
 
-- **`checks.json`** (`active` entries) → the toolchain-detection starting
-  hypothesis (step 0) and the baseline gate (step 2): use the recorded commands
-  and quirks instead of deriving blind.
-- **`flakes.json`** (`quarantined` entries) → seed `oracle.md`'s quarantine
-  section with each test, its failure mode, and its discriminator, so verify
-  applies it from turn one instead of re-discovering the flake mid-run.
-- **`sizing.md`** → decompose-preemptively priors for step 4: an area that ran
-  too big last time is seeded smaller now.
-- **`patterns.md`** → gaming shapes and instrument-blindness blind spots for the
-  step 5 red-team to weight toward.
-- **`landmines.md`** → codebase surprises to fold into the `context` of any
-  ticket they touch.
+Record the spec's sha256 (journal it) so Resume can detect a changed contract.
 
-**The validate guard.** Every primed entry is a prior the run must **re-confirm
-or retire** — never trusted blind. A `checks.json` command that no longer works
-fails the step 3 probe; a `flakes.json` test that's now stable surfaces in the
-normal flake flow; a `landmines.md` gotcha in code since rewritten just won't
-recur. Harvest (termination) records each correction, so the store sharpens
-instead of rotting into folklore. No `.ailoop/learnings/` → first campaign here;
-derive everything from the spec and the live toolchain as usual.
+**Probe environment preconditions now.** The spec's listed keys, services,
+and runtimes (aispec's contract requires them listed) get checked here, not
+discovered at phase 3: env vars present, services reachable, runtimes at
+version. A missing precondition is a refuse-to-start, reported alongside the
+gate — the cheapest possible time to fail.
 
-0. **Locate the spec.** Use the path the user gave, or look in `specs/` for
-   `status: locked` frontmatter (`draft` specs are invisible here; `done` are
-   retired legacy):
-   - **exactly one locked** → that is the contract;
-   - **several locked** → **ask which** (AskUserQuestion). Ideally only one
-     spec is locked at a time — a spec queued behind another campaign goes
-     stale waiting — and picking the campaign is intent, never defaulted.
-     The `.ailoop/run/` created at intake is what marks the chosen one active
-     from then on;
-   - **none locked** (drafts only, nothing, or only a legacy root
-     `SPEC.md`/`PLAN.md`) → **refuse to start** — a draft goes back to
-     `/aispec` to finish; a legacy or ambiguous document is a stop-and-ask,
-     never a guess. Also detect the project's own
-   toolchain (type-check / test / build commands, package manager) from its
-   manifest; the oracle's checks must use *this* project's commands, not
-   assumed ones.
+## 1. Prime from learnings (if `.ailoop/learnings/` exists)
 
-1. **Read the entire spec.** Extract, verbatim where possible:
-   - **Build order / phases.** Respect the spec's own phasing and de-risk order
-     — do not invent your own plan. (A good spec puts the riskiest phase first;
-     honor that.)
-   - **Locked decisions.** Stack, data model, architecture, "do not add X"
-     lists. These are frozen — workers must never re-litigate them. Copy them
-     into the oracle doc so every worker prompt can cite them.
-   - **Out-of-scope list** → the scope tripwire.
+Read each facet at its consumption point — don't dump them all into context:
 
-2. **Derive the per-phase oracle.** For each phase, write the *executable*
-   checks that mean "this phase is done." Each check is a command with an
-   expected result, or a scripted acceptance test. Prefer, in order:
-   - build/type-check passes (e.g. `bun run check`),
-   - the service boots and a health endpoint responds,
-   - a **behavioral** acceptance test the spec names explicitly (the sharpest
-     kind — e.g. "given these 3 contrasting inputs, the output must differ in
-     *this* way"). Write it as a runnable harness, not a vibe.
+- `checks.json` → step 2 (known-good toolchain commands, quirks)
+- `sizing.md` → step 3 (what kinds of tickets proved too big before — split preemptively)
+- `gaming.md` → step 4 (cheat shapes to probe for in the critic pass)
+- `flakes.json` → journal the known flakes + discriminators now, so verify
+  reds against them go straight to the probe
+- `landmines.md` → fold relevant entries into ticket `context` in step 3
 
-   Also record in `oracle.md`: the **baseline gate** — the type-check / build /
-   lint / test commands (from step 0's toolchain detection) that *every*
-   ticket must pass regardless of what it touches, classified into fast tier
-   (per ticket) and gate tier (per phase close) per **Verification** in
-   SKILL.md. Mirror the fast tier into `backlog.json` as `fastChecks`
-   (`{name, cmd}` entries) — the machine copy `verify.mjs` runs; `oracle.md`
-   stays the human-readable authority, and an amendment to one amends both
-   — and the **contract identity**: the spec's path, its `spec_version` (if the
-   frontmatter has one), and its sha256 content hash (`shasum -a 256`). Resume
-   verifies this identity before every run; it is what makes a mid-drive spec
-   change detectable instead of silent.
+Inject low-evidence entries (evidence count 1) as hypotheses, not rules.
+Every primed entry gets re-confirmed or retired by this campaign's
+retrospective.
 
-3. **The refuse-to-start gate.** Stop and ask the human if either:
-   - a phase's oracle is not executable **as written** (hand-wavy / no runnable
-     check) — a full autonomous run with a fuzzy oracle is the single most
-     dangerous configuration this skill can be in; **or**
-   - the oracle is well-defined but its **environment preconditions aren't
-     met** — the checks can't actually run here. Probe these at intake: required
-     API keys/secrets, network access, a git repo (worktree fan-out needs one),
-     runtimes/toolchain, and any runtime discrepancy between the spec's locked
-     stack and what's installed. A verifiable-in-principle oracle you cannot run
-     *now* is not a green light.
+## 2. Detect the toolchain and seed the campaign
 
-4. **Seed the backlog.** Turn each phase into tickets in `.ailoop/run/backlog.json`,
-   each sized to one focused subagent session and written cold-start runnable
-   (full schema in SKILL.md), each tagged with its `phase` and a **non-empty**
-   `files` declaration **anchored in evidence**: every declared path either
-   exists and demonstrably hosts the behavior (grep for it; cite the anchor in
-   `context`) or is an explicit create. Never infer what the codebase probably
-   calls things — a guessed home is a wasted dispatch when the builder
-   discovers the real one, and it is the single most repeated footprint bug in
-   practice. Wire `depends_on` so the graph encodes the spec's
-   de-risk order — the riskiest phase's tickets come first and downstream
-   tickets depend on them. Err small; you will decompose further mid-flight
-   anyway. Do **not** try to enumerate every ticket for late phases perfectly —
-   seed them coarsely and refine as earlier tickets teach you the shape.
-   Give every behavioral ticket its `acceptanceChecks` (the runnable mirror of
-   `acceptance`); mark pure scaffold/config tickets `scaffold: true` (skips
-   the gaming read); an obviously-mechanical ticket may carry
-   `builderModel: "haiku"`.
+```
+node <skill>/templates/backlog-write.mjs init --project <name>
+cp <skill>/templates/*.mjs .ailoop/run/
+```
 
-   While seeding, declare **shared verify resources**: if any ticket's checks
-   *mutate* a shared external resource (a dev database the integration suite
-   resets, a queue, a local object store), concurrent verifies would collide.
-   Probe whether the project can provision isolated instances — run the
-   candidate provision command once and drive a real check against the
-   instance; never assume from docs — then write the backlog's top-level
-   `resources` block (`{ pool, provision, teardown }` per resource; a bare
-   `{ "pool": 1 }` when isolation isn't provisionable — leases then serialize,
-   which is correct, just not parallel) and tag each affected ticket with
-   `resources: ["<name>"]`. Record what was probed and the rationale in
-   `oracle.md`. Mechanism in SKILL.md → **Verification → Shared verify
-   resources**.
+Add `.ailoop/run/` to `.gitignore` (learnings/ stays tracked). From the
+project manifest, detect the real commands (type-check, build, lint, unit
+suite) — verify each actually runs before trusting it. Feed them in as
+`fastChecks`, and the slow suites (e2e, anything needing a live server) as
+each phase's gate commands, via `backlog-write.mjs seed` — it refuses once
+the first ticket exists; later config changes are amendments, journaled.
 
-   Then write the **coverage map** into `oracle.md`: every requirement/section
-   of the spec → the ticket(s) or oracle check that delivers it. A requirement
-   with no entry gets a ticket now or an explicit "deferred" line — silence in
-   this map is how an under-derived intake finishes an incomplete build with
-   every check green. Update the map as tickets decompose.
+**Fast vs gate tier:** fast = seconds-to-a-minute, runs on every ticket
+verify. Gate = slow, runs per phase close on the merged tree. A ticket that
+ships a new gate-tier test still runs *that test* at its own verify (it's the
+ticket's own acceptance).
 
-5. **Red-team the acceptance.** Before any build spend, fan out a few cheap
-   agents (one per phase's tickets), each running the **two-lens pass defined
-   in SKILL.md → When a check is wrong** — gaming, then instrument blindness.
-   Each cheat or blind spot found = sharpen the check. Prefer
-   input→output contrast checks ("these 3 JDs must flip the lede differently")
-   over artifact-existence checks ("file exists", "function returns") —
-   existence is the most gameable form. Record the pass in the ledger.
+Seed `outOfScope` the same way — the spec's Out-of-scope list, verbatim. It is
+the tripwire the gaming check reads per diff and phase-close reads per phase;
+frontier can't see feature-scope, so this list is the only place it lives.
 
-6. **Set the caps.** In `backlog.json`'s `caps`: per-ticket max attempts
-   (default 3) and the thrash threshold (a ticket's failing set doesn't shrink
-   across 2 attempts → escalate; the scheduler computes this from the
-   `attempts` log). There is no cap on total dispatches — the run goes to
-   completion. Snapshot the caps in the ledger run header.
+## 3. Decompose the spec into draft tickets
 
-7. **Keep the campaign out of git.** `.ailoop/run/` and `specs/` are untracked by
-   design — campaign state, noise in the project's history. Ensure
-   `.gitignore` covers both (add the entries if missing) — ignore
-   **`.ailoop/run/`**, *not* the whole `.ailoop/`: its sibling
-   `.ailoop/learnings/` is the cross-campaign store and is meant to be tracked
-   (`.gitignore` line `/.ailoop/run/`, never `/.ailoop/`). The run's durable
-   record is the merged code, its tests, and the workers' branch commits;
-   the rare commit you author on the mainline yourself goes through the
-   **`commit` skill**. Accepted cost, on the record: disk holds the
-   campaign's only copy — a `git clean -fdx` mid-run wipes the loop's memory
-   (worker branches survive; a re-intake reconciles).
+Break each phase into tickets sized for **one fresh worker session** — err
+small; `tooBig` replies are healthy but not free. Near-term phases get full
+detail; later phases may be seeded coarse and refined while workers run.
+Every ticket: self-contained `context` (a worker with zero conversation
+memory must succeed from it), non-empty `files`, executable
+`acceptanceChecks`, `phase`, `origin` citing the spec section. Prefer
+input→output contrast checks over artifact-existence checks — existence is
+the most gameable form.
 
-Report the intake to the user as a short pre-flight: the phase→oracle map, the
-seeded backlog (ticket count + the first few ready tickets + the dependency
-spine), the caps, the red-team findings, and any oracle you had to ask them to
-supply. Then drive (SKILL.md Stage 2).
+If a ticket's checks *mutate* shared external state (a dev DB they reset, a
+queue, a local store), name it in the ticket's `resources` array — frontier
+never co-schedules two tickets that share a resource, so parallel verifies
+can't corrupt each other. Read-only touches don't count.
+
+Feed them in via `backlog-write.mjs add` (it validates; fix what it refuses).
+
+## 4. Critic pass over every draft
+
+Per SKILL.md §2.2 — the five questions, findings fixed or logged as accepted
+risks, then `vet` each ticket. Intake ends with the first frontier batch
+vetted; later phases can be vetted during the drive's wait time.
+
+## 5. Pre-flight report to the human
+
+One message: the phases and their gates, ticket count, the first batch, any
+accepted risks, anything about the spec that surprised you. Then start the
+drive. No approval wait unless something in intake was genuinely ambiguous.

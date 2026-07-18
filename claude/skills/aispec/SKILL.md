@@ -53,19 +53,23 @@ wins. Specs coexist in `specs/` — drafts under interrogation, `locked` ready
 to run, `done` retired — but keep at most one `locked` at a time as the
 ideal: a locked spec queued behind another campaign goes stale by the time
 it runs (warn when a lock would create a second). Which spec is *in flight*
-is marked by the `.ailoop/` directory, not by anything in the folder. The folder is
+is marked by the `.ailoop/run/` directory, not by anything in the folder —
+never by `.ailoop/` itself, which exists permanently across campaigns (it
+holds the git-tracked `learnings/`). The folder is
 **untracked by design**: a spec is the next campaign's contract, not part of
 the repo's record — what a build leaves behind is code, tests, and graduated
 docs, never the spec that ordered them. Ensure `.gitignore` covers `specs/`
-and `.ailoop/` at scaffold. Accepted cost, on the record: the file is the
+and `.ailoop/run/` at scaffold — **`.ailoop/run/` exactly, never `.ailoop/`
+wholesale: `.ailoop/learnings/` is the cross-campaign memory and must stay
+git-tracked**. Accepted cost, on the record: the file is the
 whole memory AND git never protects it — a `git clean -fdx` loses the
 interrogation; the campaign is meant to be run to done in one pass, not
 parked. Scaffold from `templates/spec.md`. Two pieces of state
 live inside it:
 
 - **Frontmatter `status: draft | locked | done`.** Only a `locked` spec is a
-  valid ailoop contract; ailoop refuses to start on a draft and ignores
-  `done` specs.
+  valid ailoop contract; ailoop refuses to start on a draft, ignores `done`
+  specs, and flips the spec to `done` itself when its campaign closes.
 - **The Open Questions section** — your backlog. One entry per unresolved
   ambiguity; an answered question is deleted and its answer lands in the
   section it belongs to. This is what makes iterative invocation work:
@@ -84,8 +88,8 @@ scope.)
 
 1. **Scaffold immediately.** Create the spec from the template in `specs/`
    *before asking the human anything*, and ensure the `.gitignore` entries
-   (`specs/`, `.ailoop/`) exist. Durability precedes structure: the file must
-   exist before the material does.
+   (`specs/`, `.ailoop/run/`) exist. Durability precedes structure: the file
+   must exist before the material does.
 2. **Braindump, streamed to disk.** Invite the human to dump everything
    unstructured — goals, constraints, half-decisions, fears — and write each
    message **verbatim into the `## Braindump (raw)` section as it arrives**,
@@ -97,10 +101,16 @@ scope.)
    gets dropped**: every statement either lands in a section or spawns an Open
    Questions entry. This is the coverage discipline ailoop later enforces
    ticket-side; it starts here.
-4. **Lock loud defaults** (see Interrogation craft) for every gap that has a
+4. **Prime from learnings** (if `.ailoop/learnings/` exists): `sizing.md`
+   informs how finely to cut phases (what proved too big last campaign);
+   `landmines.md` suggests environment preconditions the human forgot to
+   mention; `checks.json` names the toolchain commands acceptance should be
+   phrased against. Low-evidence entries are hypotheses to raise, not facts
+   to assert.
+5. **Lock loud defaults** (see Interrogation craft) for every gap that has a
    conventional answer; list them for override in the session report.
-5. **Seed Open Questions** with the genuine forks, ordered riskiest-first.
-6. Report: spec skeleton, defaults locked, questions open, distance to lock.
+6. **Seed Open Questions** with the genuine forks, ordered riskiest-first.
+7. Report: spec skeleton, defaults locked, questions open, distance to lock.
 
 ### Iterate invocations — burn down the questions
 
@@ -125,10 +135,15 @@ it is their contract:
       expected result, or behavioral contract with concrete contrasting
       input→output examples. No vibes.
 - [ ] **Red-team pass by a fresh agent** — spawn one cold agent whose only
-      input is the spec file: for each acceptance, "how could a builder
-      satisfy this while disappointing the human?" You wrote the wording; you
-      cannot also be the one who checks it for blind spots. Every cheat found
-      = sharpen now, while rewording is cheap.
+      input is the spec file (plus `.ailoop/learnings/gaming.md` when it
+      exists — the cheat shapes past campaigns actually produced are its
+      probe list). Two lenses per acceptance, same pair ailoop's critic pass
+      runs ticket-side: **gaming** — "how could a builder satisfy this while
+      disappointing the human?" — and **blindness** — "assume an honest
+      builder: what real defect can this acceptance structurally not see?"
+      You wrote the wording; you cannot also be the one who checks it for
+      blind spots. Every cheat or blind spot found = sharpen now, while
+      rewording is cheap.
 - [ ] De-risk order confirmed with the human — the riskiest phase is first
       and they agree it's the riskiest.
 - [ ] Environment preconditions listed and, where checkable now, checked.
@@ -197,12 +212,12 @@ the human, don't infer:
 
 - **Amendment to a live (or paused) drive** → the change-order path below.
 - **New work after a finished build** → a new contract, not an amendment.
-  ailoop's termination already closed the campaign — spec flipped to
-  `status: done`, `.ailoop/` deleted (if this one still reads `locked` from
-  an older run, flip it now). Start fresh — new spec file, full
-  interrogation, new ailoop intake. Feature 2 deserves the same grilling
-  feature 1 got; routing it through change orders on a dead contract gives it
-  none.
+  ailoop's termination already closed the campaign — the spec flipped to
+  `status: done` by ailoop itself, `.ailoop/run/` deleted (if this one still
+  reads `locked` from an older run or an interrupted close, flip it now).
+  Start fresh — new spec file, full interrogation, new ailoop intake.
+  Feature 2 deserves the same grilling feature 1 got; routing it through
+  change orders on a dead contract gives it none.
 
   Before scaffolding the new spec, run the **graduation pass** over the
   retired one. Inheritance is never spec-to-spec — the `done` file is a
@@ -225,8 +240,8 @@ the human, don't infer:
   reality — the code, the tests, the merged work's git history — never from
   the old spec's prose.
 
-A locked spec with an ailoop drive in flight has a backlog and an oracle
-derived from it; editing it in place is how the loop and the contract diverge
+A locked spec with an ailoop drive in flight has a backlog and checks derived
+from it; editing it in place is how the loop and the contract diverge
 with nobody noticing. On any post-lock change request:
 
 - Append a **Change order** entry (date, the change, rationale) — never
@@ -234,19 +249,22 @@ with nobody noticing. On any post-lock change request:
   `spec_version`. The spec is untracked: this entry is the *only* record of
   what changed; there is no git diff behind it, so write it complete.
 - Warn what it means downstream — concretely, because the machinery will act
-  on it: ailoop recorded the spec's hash in `oracle.md` at intake, and its
+  on it: ailoop journaled the spec's hash at intake, and its
   next resume **recomputes and refuses to dispatch on a mismatch**. The
   change-order entry is what that reconciliation reads to learn what changed
   and why — write it for that reader. A change to *what behavior counts as
-  done* then goes through ailoop's semantic amendment tier; a structural
-  change may need affected backlog tickets reseeded.
+  done* then goes through ailoop's meaning-level amendment tier — it always
+  escalates to the human; a structural change may need affected backlog
+  tickets reseeded.
 
 ## Division of labor — what aispec must NOT do
 
-- **No backlog seeding, no `oracle.md`, no ticket sizing.** That is ailoop
-  intake's job; doing it twice creates two sources of truth. You get the
-  acceptance *stated* precisely enough to mechanize — ailoop mechanizes it.
+- **No backlog seeding, no ticket sizing, no fastChecks or phase-gate
+  seeding.** That is ailoop intake's job; doing it twice creates two sources
+  of truth. You get the acceptance *stated* precisely enough to mechanize —
+  ailoop mechanizes it.
 - **No building.** Not even a prototype "to check feasibility" — a feasibility
   doubt is an Open Questions entry or a Phase 0, not a side project.
-- The spec is the **human-owned contract**; `.ailoop/` is machine-derived
-  state. aispec touches only the former.
+- The spec is the **human-owned contract**; `.ailoop/run/` is machine-derived
+  state and `.ailoop/learnings/` is machine-curated memory. aispec *reads*
+  learnings to interrogate better; it writes only the spec.
