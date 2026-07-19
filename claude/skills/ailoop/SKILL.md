@@ -41,7 +41,7 @@ stop — you're doing a script's job, badly.
 ## The two state trees
 
 - **`.ailoop/run/`** — the campaign's working memory: `backlog.json`,
-  `journal.jsonl`, `evidence/`, and the five scripts copied from
+  `journal.jsonl`, `evidence/`, and the six scripts copied from
   `templates/` at intake. Untracked in git. Created at intake, deleted at
   campaign close. **Its presence = a campaign is in flight**; if it exists,
   never re-run intake — resume (see Resume).
@@ -122,6 +122,15 @@ Copied from `templates/` into `.ailoop/run/` at intake. Their contracts:
 - **`progress.mjs` — the live view.** Renders the backlog as a status tree
   with counts. `--watch` re-renders on file change. Zero tokens; for the
   human's benefit.
+- **`postmortem.mjs` — the campaign's flight recorder, rendered.** At
+  retrospective (before `run/` is deleted):
+  `node .ailoop/run/postmortem.mjs --out specs/<spec>.postmortem.html`.
+  Renders the journal as a timeline (a lane per ticket, dependency arrows,
+  verify overlays, phase markers) with per-ticket time and estimated worker
+  cost, and embeds the raw journal in the page — the HTML doubles as the
+  campaign's durable event archive. Zero tokens. Its cost figures come from
+  the `--data` telemetry journaled at close; tickets closed without it show
+  duration only.
 - **`learn.mjs` — the cross-campaign merge.** Termination-only, and the one
   script that writes `.ailoop/learnings/` rather than `.ailoop/run/`. Merges the
   retrospective's keyed-JSON harvest (`checks`, `flakes`) with evidence counts,
@@ -239,14 +248,17 @@ Per returned ticket, three layers in order:
    arithmetic, so the diff-reader is the only guard that can see it.
 3. **You judge**:
    - **Clean** → `backlog-write.mjs close <id> --evidence <path>
-     --note "<any notable worker finding>"`, then merge the branch into the
-     mainline. If the mainline moved past this worker's `baseSha`, re-run the
+     --note "<any notable worker finding>"
+     --data '{"workerTokens":N,"workerSeconds":S}'` — the tokens and duration
+     the Agent tool reported for that worker; this telemetry is what
+     postmortem.mjs prices, and close is the only moment it exists. Then merge
+     the branch into the mainline. If the mainline moved past this worker's `baseSha`, re-run the
      fast tier on the merged tree — the integration gate the old batch merge
      gave you for free. The close `--note` is where a finding worth harvesting
      lands in the journal; there is no separate telemetry sidecar.
    - **Failed** → `backlog-write.mjs attempt <id>` with the failing check
-     names (verify's `failing` array verbatim), your hypothesis, and the
-     fixNote; re-dispatch with the log. frontier.mjs enforces the caps.
+     names (verify's `failing` array verbatim), your hypothesis, the fixNote,
+     and the same `--data` worker telemetry; re-dispatch with the log. frontier.mjs enforces the caps.
    - **Gamed** (you confirm the flag against the spec's intent) → a failed
      attempt **and** the escaped-bug rule: sharpen the cheated check before
      re-dispatch.

@@ -20,6 +20,17 @@ resolutions), quarantined flakes as explicit residuals, escaped bugs and
 which checks got strengthened, walls hit. Computed from the journal and
 evidence files — never narrated from memory.
 
+Alongside the prose report, render the post-mortem:
+
+```
+node .ailoop/run/postmortem.mjs --out specs/<spec>.postmortem.html
+```
+
+It lives next to the run report and embeds the raw journal, so the timeline,
+per-ticket costs, and every journaled event survive the run-directory
+deletion in step 4. This must run before that deletion — there is no
+second chance.
+
 ## 3. Retrospective harvest → learnings
 
 Read the full journal (this is real reasoning — thinking on). Distill
@@ -62,6 +73,7 @@ status by surviving.
 
 Journal the close, flip the spec's frontmatter to `status: done` (aispec
 treats `done` specs as retired records — this flip is what tells it the
-contract is spent), then delete `.ailoop/run/` (learnings/ remains, tracked).
-The campaign is over when — and only when — the human has the report, the
-spec reads `done`, and the run directory is gone.
+contract is spent), then delete `.ailoop/run/` (learnings/ remains, tracked;
+the journal survives inside the post-mortem HTML from step 2). The campaign
+is over when — and only when — the human has the report and the post-mortem,
+the spec reads `done`, and the run directory is gone.

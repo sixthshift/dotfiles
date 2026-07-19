@@ -52,9 +52,15 @@ function load() {
   return JSON.parse(fs.readFileSync(BACKLOG, 'utf8'));
 }
 function save(b) { fs.writeFileSync(BACKLOG, JSON.stringify(b, null, 2) + '\n'); }
-function journal(kind, subject, body) {
+function journal(kind, subject, body, data) {
   const seq = fs.existsSync(JOURNAL) ? fs.readFileSync(JOURNAL, 'utf8').split('\n').filter(Boolean).length + 1 : 1;
-  fs.appendFileSync(JOURNAL, JSON.stringify({ seq, ts: new Date().toISOString(), kind, subject, body }) + '\n');
+  fs.appendFileSync(JOURNAL, JSON.stringify({ seq, ts: new Date().toISOString(), kind, subject, body, ...(data ? { data } : {}) }) + '\n');
+}
+// --data '<json>' rides along on any journaled mutation — telemetry for the
+// post-mortem (worker tokens, durations), never load-bearing state.
+function parseData() {
+  if (!opts.data) return undefined;
+  try { return JSON.parse(opts.data); } catch { die('--data must be valid JSON'); }
 }
 function readInput(src) {
   const raw = src === '-' ? fs.readFileSync(0, 'utf8') : fs.readFileSync(src, 'utf8');
@@ -183,7 +189,7 @@ switch (cmd) {
     if (to === 'vetted' && t.status === 'draft') die(`use the vet command (red-team is mandatory)`);
     if (to === 'decomposed') die(`use the decompose command (children are mandatory)`);
     transition(t, to);
-    journal('status', t.id, `→ ${to}${opts.note ? ` — ${opts.note}` : ''}`);
+    journal('status', t.id, `→ ${to}${opts.note ? ` — ${opts.note}` : ''}`, parseData());
     save(b);
     console.log(`${t.id} → ${to}`);
     break;
@@ -202,7 +208,7 @@ switch (cmd) {
     };
     t.attempts.push(entry);
     if (t.status === 'in-flight') transition(t, 'vetted'); // back in the queue for re-dispatch
-    journal('attempt', t.id, `attempt ${entry.n} failed [${entry.failed.join(', ')}]: ${entry.hypothesis}`);
+    journal('attempt', t.id, `attempt ${entry.n} failed [${entry.failed.join(', ')}]: ${entry.hypothesis}`, parseData());
     save(b);
     console.log(`${t.id} attempt ${entry.n} logged`);
     break;
@@ -214,7 +220,7 @@ switch (cmd) {
     if (!fs.existsSync(opts.evidence)) die(`evidence file not found: ${opts.evidence}`);
     transition(t, 'closed');
     t.evidence = opts.evidence;
-    journal('close', t.id, opts.note || `closed with evidence ${opts.evidence}`);
+    journal('close', t.id, opts.note || `closed with evidence ${opts.evidence}`, parseData());
     save(b);
     console.log(`${t.id} closed`);
     break;
@@ -254,7 +260,7 @@ switch (cmd) {
   case 'note': {
     if (!fs.existsSync(JOURNAL) && !fs.existsSync(BACKLOG)) die('no campaign here');
     if (!opts.kind || !opts.subject || !opts.body) die('note requires --kind --subject --body');
-    journal(opts.kind, opts.subject, opts.body);
+    journal(opts.kind, opts.subject, opts.body, parseData());
     console.log('journaled');
     break;
   }

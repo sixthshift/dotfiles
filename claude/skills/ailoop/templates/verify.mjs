@@ -64,6 +64,7 @@ if (dirty) {
 }
 
 // 2. run checks
+const startedAt = Date.now();
 const checks = [...(backlog.fastChecks || []), ...(t.acceptanceChecks || [])];
 const failing = [];
 const log = [];
@@ -88,6 +89,17 @@ const evidence = path.join(EVID, pass ? `${id}.txt` : `${id}-a${attemptN}.txt`);
 fs.writeFileSync(evidence, log.join('\n\n'));
 const diffFile = path.join(EVID, `${id}-diff.patch`);
 fs.writeFileSync(diffFile, sh(`git diff ${base}..HEAD`, dir).stdout || '');
+
+// 5. journal the measurement — timing facts for the post-mortem. The journal
+// is append-only telemetry here, not backlog state, so writing it directly
+// doesn't breach backlog-write.mjs's sole-writer contract.
+const JOURNAL = path.join(RUN, 'journal.jsonl');
+const seq = fs.existsSync(JOURNAL) ? fs.readFileSync(JOURNAL, 'utf8').split('\n').filter(Boolean).length + 1 : 1;
+fs.appendFileSync(JOURNAL, JSON.stringify({
+  seq, ts: new Date().toISOString(), kind: 'verify', subject: id,
+  body: `${pass ? 'pass' : `fail [${failing.join(', ')}]`} in ${Math.round((Date.now() - startedAt) / 1000)}s`,
+  data: { durationMs: Date.now() - startedAt, pass, failing },
+}) + '\n');
 
 console.log(JSON.stringify({ pass, failing, scopeOverflow, evidence, diff: diffFile }, null, 2));
 process.exit(pass ? 0 : 1);
