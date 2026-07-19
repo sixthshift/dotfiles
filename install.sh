@@ -51,6 +51,10 @@ link "claude/skills/dotfiles-sync"         "$HOME/.agents/skills/dotfiles-sync"
 link "claude/skills/legibility-audit"      "$HOME/.agents/skills/legibility-audit"
 link "claude/skills/new-project"           "$HOME/.agents/skills/new-project"
 
+# --- loop (loop-engineering toolkit; `loop campaign` is the script sibling
+#     of the claude/skills/ailoop skill) ---
+link "loop/bin/loop.mjs" "$HOME/.local/bin/loop"
+
 # --- Shell ---
 # Uncomment as you populate. Pick the shell(s) you actually use.
 # link "shell/.zshrc"          "$HOME/.zshrc"
