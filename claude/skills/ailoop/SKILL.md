@@ -241,11 +241,17 @@ Per returned ticket, three layers in order:
    regression; passes alone = flake → in-scope root cause spawns a fix
    ticket, out-of-scope gets quarantined **on the record** in the journal —
    quarantine narrows interpretation, the check still runs).
-2. **Gaming check** (sonnet) reads the dumped diff: hardcoded outputs,
-   weakened/deleted tests, special-cased inputs? It flags with a *why*; it
-   never auto-fails. It is also handed `outOfScope` and flags any forbidden
-   feature the diff builds — feature-scope is invisible to frontier's file
-   arithmetic, so the diff-reader is the only guard that can see it.
+2. **Gaming check** — a **spawned sonnet agent, never you inline**. You
+   dispatched this ticket, wrote its context, and want it closed; a reader
+   with that history is the builder's advocate, not its auditor — fresh
+   context is the mechanism, and at sonnet prices it costs cents. (Observed
+   drift: a coordinator reading diffs itself feels equivalent and isn't.)
+   The agent reads the dumped diff: hardcoded outputs, weakened/deleted
+   tests, special-cased inputs? It flags with a *why*; it never auto-fails.
+   It is also handed `outOfScope` and flags any forbidden feature the diff
+   builds — feature-scope is invisible to frontier's file arithmetic, so the
+   diff-reader is the only guard that can see it. Batching several returned
+   tickets into one gaming agent is fine; skipping the agent is not.
 3. **You judge**:
    - **Clean** → `backlog-write.mjs close <id> --evidence <path>
      --note "<any notable worker finding>"
@@ -363,4 +369,5 @@ last-confirmed-campaign.
 - Hand-edit `backlog.json` or the journal (backlog-write.mjs is the only door).
 - Weaken a meaning-level check without the human.
 - Trust a builder's self-report, at any level, ever.
+- Gaming-check a diff itself — the reader must be a fresh-context agent.
 - Report done over live blocked tickets or unrun phase gates.
