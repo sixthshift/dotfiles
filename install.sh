@@ -56,7 +56,7 @@ link "claude/skills/new-project"           "$HOME/.agents/skills/new-project"
 # Runs under bun (the dashboard is Ink/JSX — bun transpiles .tsx natively, no
 # build step). Deps live in loop/node_modules, resolved from the symlink's
 # realpath, so the ~/.local/bin link needs nothing beside it.
-link "loop/bin/loop.mjs" "$HOME/.local/bin/loop"
+link "loop/src/index.ts" "$HOME/.local/bin/loop"
 if command -v bun >/dev/null 2>&1; then
   (cd "$DOTFILES_DIR/loop" && bun install --silent)
   echo "deps   loop/node_modules (bun install)"
