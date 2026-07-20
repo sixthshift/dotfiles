@@ -107,8 +107,8 @@ Copied from `templates/` into `.ailoop/campaign/` at intake. Their contracts:
   deps, cycles, empty files, dependents stranded on decomposed tickets),
   `ready` (deps closed AND `vetted`), `dispatchable` (the subset of `ready`
   safe to spawn *right now* — file- AND resource-disjoint from every in-flight
-  ticket and from each other), `capBreaches` + `thrashBreaches`,
-  `phasesDrained`, `inFlight`, `complete`. Two structural guarantees, not
+  ticket and from each other), `capped` + `stuck`,
+  `phasesDone`, `inFlight`, `complete`. Two structural guarantees, not
   rules you remember: a ticket that isn't vetted **cannot appear in ready**,
   and two tickets that would collide (same file, or same declared resource)
   **cannot both appear in dispatchable**.
@@ -175,9 +175,9 @@ Act on its output in this order — never on your own reading of the backlog:
 - `inFlight` entries you have **no live worker for** are stale → reconcile
   first (see Resume). Your own running workers appearing here is normal —
   frontier reports the fact; you supply the staleness judgment.
-- `capBreaches`/`thrashBreaches` → those tickets are walls. Escalate them with
+- `capped`/`stuck` → those tickets are walls. Escalate them with
   the `attempts` log as your diagnosis; do not dispatch them again.
-- `phasesDrained` with an unrun gate → run phase close (2.5) before new work.
+- `phasesDone` with an unrun gate → run phase close (2.5) before new work.
 - `complete: true` → Termination.
 - `ready` empty but `complete` false → blocked graph or walls; resolve or
   escalate. **Never report done over live blocked tickets.**

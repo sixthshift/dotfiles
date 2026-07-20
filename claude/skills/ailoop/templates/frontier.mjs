@@ -4,8 +4,8 @@
 // never on its own reading of backlog.json.
 //
 // Usage: node frontier.mjs [--dir .ailoop/campaign]
-// Prints JSON: { problems, cycles, ready, dispatchable, capBreaches,
-//                thrashBreaches, phasesDrained, inFlight, complete }
+// Prints JSON: { problems, cycles, ready, dispatchable, capped, stuck,
+//                phasesDone, inFlight, complete }
 // inFlight is a fact, not a diagnosis: staleness = an entry you have no live
 // worker for (all of them, on resume) — that judgment is the coordinator's.
 // dispatchable ⊆ ready: safe to spawn NOW — file- and resource-disjoint from
@@ -70,23 +70,25 @@ const ready = b.tickets
   .filter(t => (t.depends_on || []).every(d => byId[d]?.status === 'closed'))
   .map(t => t.id);
 
-// --- cap & thrash breaches (checked over READY tickets, before re-dispatch)
+// --- capped (hit the attempt cap) & stuck (thrashing) — checked over READY
+//     tickets, before re-dispatch. Both are walls: a ticket in either set is
+//     held out of dispatch until a human intervenes.
 const caps = b.caps || { maxAttempts: 3, thrash: 2 };
-const capBreaches = [];
-const thrashBreaches = [];
+const capped = [];
+const stuck = [];
 for (const id of ready) {
   const t = byId[id];
   const a = t.attempts || [];
-  if (a.length >= caps.maxAttempts) capBreaches.push({ ticket: id, attempts: a.length });
+  if (a.length >= caps.maxAttempts) capped.push({ ticket: id, attempts: a.length });
   if (a.length >= caps.thrash) {
     const recent = a.slice(-caps.thrash).map(x => new Set(x.failed || []));
     // thrash: failing set not shrinking across the window
     let shrinking = false;
     for (let i = 1; i < recent.length; i++) if (recent[i].size < recent[i - 1].size) shrinking = true;
-    if (!shrinking && recent.every(s => s.size > 0)) thrashBreaches.push({ ticket: id, window: caps.thrash });
+    if (!shrinking && recent.every(s => s.size > 0)) stuck.push({ ticket: id, window: caps.thrash });
   }
 }
-const walls = new Set([...capBreaches, ...thrashBreaches].map(x => x.ticket));
+const walls = new Set([...capped, ...stuck].map(x => x.ticket));
 const notWalled = ready.filter(id => !walls.has(id));
 
 // --- dispatchable: the subset safe to spawn RIGHT NOW — file- AND resource-
@@ -109,11 +111,13 @@ for (const id of notWalled) {
   resources.forEach(r => occupiedResources.add(r));
 }
 
-// --- phase drain: phases whose live tickets are all gone (and had at least one ticket)
-const phasesDrained = [];
+// --- phasesDone: phases whose live tickets are all gone (and had at least one).
+//     Stays true once a phase is sealed — the coordinator filters already-closed
+//     phases against the journal; the frontier only knows the work is drained.
+const phasesDone = [];
 for (const p of b.phases || []) {
   const ts = b.tickets.filter(t => t.phase === p.id);
-  if (ts.length && ts.every(t => !live(t) )) phasesDrained.push(p.id);
+  if (ts.length && ts.every(t => !live(t) )) phasesDone.push(p.id);
 }
 
 // --- in-flight & completion
@@ -125,7 +129,7 @@ const complete = b.tickets.length > 0 && b.tickets.every(t =>
 console.log(JSON.stringify({
   problems, cycles,
   ready, dispatchable,
-  capBreaches, thrashBreaches,
-  phasesDrained, inFlight: inFlightIds, complete,
+  capped, stuck,
+  phasesDone, inFlight: inFlightIds, complete,
   counts: b.tickets.reduce((m, t) => ((m[t.status] = (m[t.status] || 0) + 1), m), {}),
 }, null, 2));
