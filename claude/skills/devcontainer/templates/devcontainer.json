@@ -34,7 +34,7 @@
     "4983": { "label": "Drizzle Studio", "onAutoForward": "silent" }
   },
 
-  "postCreateCommand": "if [ -f package.json ]; then bun install; else echo 'No package.json yet — skipping bun install'; fi",
+  "postCreateCommand": "install -m 600 /run/host-codex-auth.json /root/.codex/auth.json && if [ -f package.json ]; then bun install; else echo 'No package.json yet — skipping bun install'; fi",
 
   "remoteUser": "root"
 }

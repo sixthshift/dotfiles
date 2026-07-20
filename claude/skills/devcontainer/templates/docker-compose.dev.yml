@@ -21,6 +21,9 @@ services:
       - {{PROJECT}}-node-modules:/workspace/node_modules
       - claude-config:/root/.claude
       - codex-config:/root/.codex
+      # Import the host Codex login without exposing the rest of its local
+      # sessions, settings, or platform-specific state.
+      - ~/.codex/auth.json:/run/host-codex-auth.json:ro
       # Commit identity + signing config. SSH keys are deliberately NOT
       # mounted — git auth uses SSH agent forwarding (VS Code forwards
       # SSH_AUTH_SOCK automatically when ssh-agent runs on the host).

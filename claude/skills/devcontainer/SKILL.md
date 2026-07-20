@@ -82,7 +82,8 @@ From `templates/`, fill placeholders (`{{PROJECT}}`, port labels, optional block
 Emit these always; do not drop them even if they look optional:
 
 - **`remoteUser: root`** — dev convenience inside an isolated container. The historical `vscode`-user fork (decryptid, petrol-patrol) is where the claude-config volume got lost and dead shell-config bugs crept in. Root-only.
-- **Separate config volumes** — `claude-config` → `/root/.claude` and `codex-config` → `/root/.codex`, so each agent's auth and settings survive rebuilds. Compose namespaces volumes per project, so auth is per-project by design (login once per project and agent).
+- **Separate config volumes** — `claude-config` → `/root/.claude` and `codex-config` → `/root/.codex`, so each agent's auth and settings survive rebuilds. Compose namespaces volumes per project. Codex starts from a copy of the host login; Claude logs in once per project.
+- **Host Codex auth import** — read-only bind `~/.codex/auth.json` to `/run/host-codex-auth.json`, then copy it with mode `600` into `codex-config` from `postCreateCommand`. Copy the credential only; mounting all of `~/.codex` would expose host sessions and mix macOS state with the Linux container. The host must use file-based credentials and be logged in before container creation.
 - **`{{PROJECT}}-node-modules` named volume** — the host (macOS) and container (Linux) must not share one bind-mounted `node_modules`: native binaries are platform-specific and `bun install` only materializes the current platform's. The most-dropped element historically; always emit it.
 - **No `~/.ssh` mount. Ever.** Git auth comes from SSH **agent forwarding**: VS Code forwards `SSH_AUTH_SOCK` automatically when `ssh-agent` runs on the host. Keys never enter the container, so an agent running with skipped permissions cannot read or exfiltrate them. Requires `ssh-add --apple-use-keychain` (or `AddKeysToAgent yes`) on the host — documented in the usage doc.
 - **`~/.gitconfig:ro` mount** — commit identity and signing config inside the container.
@@ -93,7 +94,7 @@ Emit these always; do not drop them even if they look optional:
 - **`shell-config.sh` with the `clauded` and `codexd` aliases** (`claude --dangerously-skip-permissions` / `codex --yolo`), copied to `/root/.shell-config.sh` and sourced from `/root/.bashrc`.
 - **Go + mcp-language-server + typescript-language-server** — the language-server binaries the LSP tool drives; part of the standard, not an extra. The gate that *activates* the tool lives in the committed `.claude/settings.json` (above), not here — binary and gate are separate.
 - **`command: sleep infinity`**, `workspaceFolder`/`working_dir` `/workspace`, workspace bind `..:/workspace:cached`.
-- **`postCreateCommand`** guards on `package.json` existing (new repos may scaffold the devcontainer before the app).
+- **`postCreateCommand`** imports host Codex auth, then guards on `package.json` existing (new repos may scaffold the devcontainer before the app).
 
 ## Optional blocks (emit on detection or request)
 
