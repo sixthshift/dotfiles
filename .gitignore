@@ -26,6 +26,9 @@ codex/cache/
 codex/log/
 codex/tmp/
 
+# loop dependencies (bun.lock is committed; run install.sh to restore)
+loop/node_modules/
+
 # OS junk
 .DS_Store
 Thumbs.db
