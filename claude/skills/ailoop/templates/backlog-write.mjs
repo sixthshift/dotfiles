@@ -4,7 +4,7 @@
 // coordinator never edits state files by hand.
 //
 // Usage:
-//   node backlog-write.mjs init --project <name> [--dir .ailoop/run]
+//   node backlog-write.mjs init --project <name> [--dir .ailoop/campaign]
 //   node backlog-write.mjs seed <config.json|-> [--amend --note "why"]
 //       config: { fastChecks?: [{name,cmd}], phases?: [{id, delivers, gate: [{name,cmd}]}], outOfScope?: [string] }
 //       seed freely before the first ticket; after that every change is an
@@ -33,7 +33,7 @@ for (let i = 0; i < args.length; i++) {
     opts[args[i].slice(2)] = next === undefined || next.startsWith('--') ? true : (i++, next);
   } else pos.push(args[i]);
 }
-const DIR = opts.dir || '.ailoop/run';
+const DIR = opts.dir || '.ailoop/campaign';
 const BACKLOG = path.join(DIR, 'backlog.json');
 const JOURNAL = path.join(DIR, 'journal.jsonl');
 

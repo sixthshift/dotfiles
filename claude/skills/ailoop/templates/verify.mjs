@@ -2,7 +2,7 @@
 // verify.mjs — the measurement. No model. Exit codes decide.
 //
 // Ticket mode:
-//   node verify.mjs --ticket T017 --dir <worktree> --base <sha> [--run .ailoop/run]
+//   node verify.mjs --ticket T017 --dir <worktree> --base <sha> [--run .ailoop/campaign]
 //   1. refuses a dirty tree (only committed work verifies)
 //   2. runs ALL fastChecks + the ticket's acceptanceChecks in the worktree
 //   3. scope check: git diff --name-only <base>..HEAD must be ⊆ declared files
@@ -21,7 +21,7 @@ import { execSync, spawnSync } from 'node:child_process';
 const opts = {};
 const argv = process.argv.slice(2);
 for (let i = 0; i < argv.length; i++) if (argv[i].startsWith('--')) { opts[argv[i].slice(2)] = argv[i + 1] ?? true; i++; }
-const RUN = opts.run || '.ailoop/run';
+const RUN = opts.run || '.ailoop/campaign';
 const EVID = path.join(RUN, 'evidence');
 fs.mkdirSync(EVID, { recursive: true });
 

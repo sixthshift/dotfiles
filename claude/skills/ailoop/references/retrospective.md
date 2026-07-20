@@ -23,7 +23,7 @@ evidence files — never narrated from memory.
 Alongside the prose report, render the post-mortem:
 
 ```
-node .ailoop/run/postmortem.mjs --out specs/<spec>.postmortem.html
+node .ailoop/campaign/postmortem.mjs --out specs/<spec>.postmortem.html
 ```
 
 It lives next to the run report and embeds the raw journal, so the timeline,
@@ -48,7 +48,7 @@ The two keyed-JSON facets (`checks`, `flakes`) are pure arithmetic. Stage your
 candidates as a harvest file and let the script do it — never by hand:
 
 ```
-node .ailoop/run/learn.mjs merge --in <harvest.json> --campaign <name>
+node .ailoop/campaign/learn.mjs merge --in <harvest.json> --campaign <name>
 ```
 
 It upserts by key (`name` for checks, `test` for flakes), bumps evidence on a
@@ -73,7 +73,7 @@ status by surviving.
 
 Journal the close, flip the spec's frontmatter to `status: done` (aispec
 treats `done` specs as retired records — this flip is what tells it the
-contract is spent), then delete `.ailoop/run/` (learnings/ remains, tracked;
+contract is spent), then delete `.ailoop/campaign/` (learnings/ remains, tracked;
 the journal survives inside the post-mortem HTML from step 2). The campaign
 is over when — and only when — the human has the report and the post-mortem,
 the spec reads `done`, and the run directory is gone.

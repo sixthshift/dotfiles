@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 // progress.mjs — live human view of the campaign. Zero tokens, read-only.
-// Usage: node progress.mjs [--dir .ailoop/run] [--watch]
+// Usage: node progress.mjs [--dir .ailoop/campaign] [--watch]
 
 import fs from 'node:fs';
 import path from 'node:path';
@@ -8,7 +8,7 @@ import path from 'node:path';
 const opts = {};
 const argv = process.argv.slice(2);
 for (let i = 0; i < argv.length; i++) if (argv[i].startsWith('--')) { opts[argv[i].slice(2)] = argv[i + 1] === undefined || argv[i + 1]?.startsWith('--') ? true : argv[++i]; }
-const DIR = typeof opts.dir === 'string' ? opts.dir : '.ailoop/run';
+const DIR = typeof opts.dir === 'string' ? opts.dir : '.ailoop/campaign';
 const BACKLOG = path.join(DIR, 'backlog.json');
 
 const GLYPH = { draft: '·', vetted: '○', 'in-flight': '◐', closed: '●', blocked: '✕', decomposed: '▽', 'failed-wall': '■' };

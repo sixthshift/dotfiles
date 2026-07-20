@@ -53,13 +53,13 @@ wins. Specs coexist in `specs/` — drafts under interrogation, `locked` ready
 to run, `done` retired — but keep at most one `locked` at a time as the
 ideal: a locked spec queued behind another campaign goes stale by the time
 it runs (warn when a lock would create a second). Which spec is *in flight*
-is marked by the `.ailoop/run/` directory, not by anything in the folder —
+is marked by the `.ailoop/campaign/` directory, not by anything in the folder —
 never by `.ailoop/` itself, which exists permanently across campaigns (it
 holds the git-tracked `learnings/`). The folder is
 **untracked by design**: a spec is the next campaign's contract, not part of
 the repo's record — what a build leaves behind is code, tests, and graduated
 docs, never the spec that ordered them. Ensure `.gitignore` covers `specs/`
-and `.ailoop/run/` at scaffold — **`.ailoop/run/` exactly, never `.ailoop/`
+and `.ailoop/campaign/` at scaffold — **`.ailoop/campaign/` exactly, never `.ailoop/`
 wholesale: `.ailoop/learnings/` is the cross-campaign memory and must stay
 git-tracked**. Accepted cost, on the record: the file is the
 whole memory AND git never protects it — a `git clean -fdx` loses the
@@ -88,7 +88,7 @@ scope.)
 
 1. **Scaffold immediately.** Create the spec from the template in `specs/`
    *before asking the human anything*, and ensure the `.gitignore` entries
-   (`specs/`, `.ailoop/run/`) exist. Durability precedes structure: the file
+   (`specs/`, `.ailoop/campaign/`) exist. Durability precedes structure: the file
    must exist before the material does.
 2. **Braindump, streamed to disk.** Invite the human to dump everything
    unstructured — goals, constraints, half-decisions, fears — and write each
@@ -213,7 +213,7 @@ the human, don't infer:
 - **Amendment to a live (or paused) drive** → the change-order path below.
 - **New work after a finished build** → a new contract, not an amendment.
   ailoop's termination already closed the campaign — the spec flipped to
-  `status: done` by ailoop itself, `.ailoop/run/` deleted (if this one still
+  `status: done` by ailoop itself, `.ailoop/campaign/` deleted (if this one still
   reads `locked` from an older run or an interrupted close, flip it now).
   Start fresh — new spec file, full interrogation, new ailoop intake.
   Feature 2 deserves the same grilling feature 1 got; routing it through
@@ -265,6 +265,6 @@ with nobody noticing. On any post-lock change request:
   ailoop mechanizes it.
 - **No building.** Not even a prototype "to check feasibility" — a feasibility
   doubt is an Open Questions entry or a Phase 0, not a side project.
-- The spec is the **human-owned contract**; `.ailoop/run/` is machine-derived
+- The spec is the **human-owned contract**; `.ailoop/campaign/` is machine-derived
   state and `.ailoop/learnings/` is machine-curated memory. aispec *reads*
   learnings to interrogate better; it writes only the spec.

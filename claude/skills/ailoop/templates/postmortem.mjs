@@ -4,11 +4,11 @@
 // arrows, verify overlays, phase-gate markers), per-ticket cost bars, and a
 // table view. Zero model cost; facts come from journal.jsonl + backlog.json.
 //
-//   node .ailoop/run/postmortem.mjs --out specs/<spec>.postmortem.html [--run .ailoop/run]
+//   node .ailoop/campaign/postmortem.mjs --out specs/<spec>.postmortem.html [--run .ailoop/campaign]
 //
-// Run at retrospective, BEFORE .ailoop/run/ is deleted. The raw journal is
+// Run at retrospective, BEFORE .ailoop/campaign/ is deleted. The raw journal is
 // embedded in the page (<script id="journal">), so the HTML is also the
-// campaign's durable event archive — deleting run/ loses nothing.
+// campaign's durable event archive — deleting campaign/ loses nothing.
 //
 // Worker cost is an ESTIMATE: the coordinator journals the tokens the Agent
 // tool reported at close (--data '{"workerTokens":N,"workerSeconds":S}');
@@ -21,7 +21,7 @@ import path from 'node:path';
 const opts = {};
 const argv = process.argv.slice(2);
 for (let i = 0; i < argv.length; i++) if (argv[i].startsWith('--')) { opts[argv[i].slice(2)] = argv[i + 1] ?? true; i++; }
-const RUN = opts.run || '.ailoop/run';
+const RUN = opts.run || '.ailoop/campaign';
 const OUT = opts.out;
 if (!OUT) { console.error('need --out <path.html>'); process.exit(2); }
 

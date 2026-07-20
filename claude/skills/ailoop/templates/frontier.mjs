@@ -3,7 +3,7 @@
 // about the backlog; never mutates it. The coordinator acts on this output,
 // never on its own reading of backlog.json.
 //
-// Usage: node frontier.mjs [--dir .ailoop/run]
+// Usage: node frontier.mjs [--dir .ailoop/campaign]
 // Prints JSON: { problems, cycles, ready, dispatchable, capBreaches,
 //                thrashBreaches, phasesDrained, inFlight, complete }
 // inFlight is a fact, not a diagnosis: staleness = an entry you have no live
@@ -18,7 +18,7 @@ import path from 'node:path';
 const opts = {};
 const argv = process.argv.slice(2);
 for (let i = 0; i < argv.length; i++) if (argv[i].startsWith('--')) { opts[argv[i].slice(2)] = argv[i + 1] ?? true; i++; }
-const DIR = opts.dir || '.ailoop/run';
+const DIR = opts.dir || '.ailoop/campaign';
 const b = JSON.parse(fs.readFileSync(path.join(DIR, 'backlog.json'), 'utf8'));
 const byId = Object.fromEntries(b.tickets.map(t => [t.id, t]));
 

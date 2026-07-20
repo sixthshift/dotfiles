@@ -1,6 +1,6 @@
 # Intake — starting a campaign
 
-Only runs when `.ailoop/run/` is absent. Steps, in order:
+Only runs when `.ailoop/campaign/` is absent. Steps, in order:
 
 ## 0. Locate the spec and refuse-to-start gate
 
@@ -37,10 +37,10 @@ retrospective.
 
 ```
 node <skill>/templates/backlog-write.mjs init --project <name>
-cp <skill>/templates/*.mjs .ailoop/run/
+cp <skill>/templates/*.mjs .ailoop/campaign/
 ```
 
-Add `.ailoop/run/` to `.gitignore` (learnings/ stays tracked). From the
+Add `.ailoop/campaign/` to `.gitignore` (learnings/ stays tracked). From the
 project manifest, detect the real commands (type-check, build, lint, unit
 suite) — verify each actually runs before trusting it. Feed them in as
 `fastChecks`, and the slow suites (e2e, anything needing a live server) as

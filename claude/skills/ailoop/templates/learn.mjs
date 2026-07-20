@@ -6,11 +6,11 @@
 // only the two KEYED-JSON facets (checks, flakes); the prose facets (sizing,
 // gaming, landmines) can't be mechanically deduped and stay coordinator-authored.
 //
-// Runs at termination, BEFORE .ailoop/run/ is deleted; learnings/ is a sibling
+// Runs at termination, BEFORE .ailoop/campaign/ is deleted; learnings/ is a sibling
 // that survives. Dependency-free; Node >= 18.
 //
 // Usage:
-//   node .ailoop/run/learn.mjs merge --in <harvest.json> --campaign <name>
+//   node .ailoop/campaign/learn.mjs merge --in <harvest.json> --campaign <name>
 //     [--dir .ailoop/learnings] [--evict 3] [--cap 30]
 //
 // <harvest.json> — coordinator-authored, grounded in THIS run's evidence:

@@ -26,7 +26,7 @@ stop — you're doing a script's job, badly.
 
 | Term | Meaning |
 |---|---|
-| **Campaign** | One full run of a spec, intake → done. State in `.ailoop/run/`. |
+| **Campaign** | One full run of a spec, intake → done. State in `.ailoop/campaign/`. |
 | **Ticket** | One unit of work, sized for a single fresh worker session. |
 | **Backlog** | `backlog.json` — every ticket, its status, dependencies, history. |
 | **Frontier** | The ready tickets safe to spawn right now — file- and resource-disjoint from everything in-flight (computed, never stored). |
@@ -40,7 +40,7 @@ stop — you're doing a script's job, badly.
 
 ## The two state trees
 
-- **`.ailoop/run/`** — the campaign's working memory: `backlog.json`,
+- **`.ailoop/campaign/`** — the campaign's working memory: `backlog.json`,
   `journal.jsonl`, `evidence/`, and the six scripts copied from
   `templates/` at intake. Untracked in git. Created at intake, deleted at
   campaign close. **Its presence = a campaign is in flight**; if it exists,
@@ -91,7 +91,7 @@ never proceeds).
 
 ## The scripts
 
-Copied from `templates/` into `.ailoop/run/` at intake. Their contracts:
+Copied from `templates/` into `.ailoop/campaign/` at intake. Their contracts:
 
 - **`backlog-write.mjs` — the sole writer.** Every mutation of `backlog.json`
   is a command: `init`, `seed` (campaign config — `fastChecks`, `phases`,
@@ -113,7 +113,7 @@ Copied from `templates/` into `.ailoop/run/` at intake. Their contracts:
   and two tickets that would collide (same file, or same declared resource)
   **cannot both appear in dispatchable**.
 - **`verify.mjs` — the measurement.** Run against a worker's worktree:
-  `node .ailoop/run/verify.mjs --ticket T017 --dir <worktree> --base <sha>`.
+  `node .ailoop/campaign/verify.mjs --ticket T017 --dir <worktree> --base <sha>`.
   Refuses a dirty tree; runs the full `fastChecks` + the ticket's
   `acceptanceChecks` (exit codes decide); scope-checks the git diff against
   declared `files` — an undeclared touch fails the ticket with the overflow
@@ -123,8 +123,8 @@ Copied from `templates/` into `.ailoop/run/` at intake. Their contracts:
   with counts. `--watch` re-renders on file change. Zero tokens; for the
   human's benefit.
 - **`postmortem.mjs` — the campaign's flight recorder, rendered.** At
-  retrospective (before `run/` is deleted):
-  `node .ailoop/run/postmortem.mjs --out specs/<spec>.postmortem.html`.
+  retrospective (before `campaign/` is deleted):
+  `node .ailoop/campaign/postmortem.mjs --out specs/<spec>.postmortem.html`.
   Renders the journal as a timeline (a lane per ticket, dependency arrows,
   verify overlays, phase markers) with per-ticket time and estimated worker
   cost, and embeds the raw journal in the page — the HTML doubles as the
@@ -132,7 +132,7 @@ Copied from `templates/` into `.ailoop/run/` at intake. Their contracts:
   the `--data` telemetry journaled at close; tickets closed without it show
   duration only.
 - **`learn.mjs` — the cross-campaign merge.** Termination-only, and the one
-  script that writes `.ailoop/learnings/` rather than `.ailoop/run/`. Merges the
+  script that writes `.ailoop/learnings/` rather than `.ailoop/campaign/`. Merges the
   retrospective's keyed-JSON harvest (`checks`, `flakes`) with evidence counts,
   staleness eviction, and a size cap — the arithmetic half of harvest, never
   eyeballed. Prose facets stay coordinator-authored. See Learnings.
@@ -148,7 +148,7 @@ no model at all.
 
 ---
 
-## Stage 1 — Intake (only when `.ailoop/run/` is absent)
+## Stage 1 — Intake (only when `.ailoop/campaign/` is absent)
 
 Read `references/intake.md` and follow it. In brief: locate the locked spec;
 refuse to start if "done" isn't machine-checkable (the **only** permitted
@@ -165,7 +165,7 @@ One turn of the loop:
 ### 2.1 Ask the frontier
 
 ```
-node .ailoop/run/frontier.mjs
+node .ailoop/campaign/frontier.mjs
 ```
 
 Act on its output in this order — never on your own reading of the backlog:
@@ -315,7 +315,7 @@ Escalate — with the ticket, the last verify output, your diagnosis (the
 `attempts` log writes most of it), and the specific decision you need — when:
 caps/thrash breach, spec contradiction, meaning-level amendment, scope
 tripwire, or a blocked graph you cannot legally rewire. An escalation closes
-nothing: `.ailoop/run/` stays put and the campaign resumes where it stopped.
+nothing: `.ailoop/campaign/` stays put and the campaign resumes where it stopped.
 Never a rosy summary of a loop that didn't finish.
 
 ## Termination
@@ -323,9 +323,9 @@ Never a rosy summary of a loop that didn't finish.
 `complete: true` and every phase gate green → read
 `references/retrospective.md` and follow it: the final coverage pass (unmapped
 spec requirements = NOT done), the report, the **retrospective harvest** into
-`.ailoop/learnings/`, then delete `.ailoop/run/` and close the campaign.
+`.ailoop/learnings/`, then delete `.ailoop/campaign/` and close the campaign.
 
-## Resume (`.ailoop/run/` exists)
+## Resume (`.ailoop/campaign/` exists)
 
 Never re-run intake. Read the journal tail, run frontier.mjs, reconcile:
 
