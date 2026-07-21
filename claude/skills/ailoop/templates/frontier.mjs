@@ -70,18 +70,31 @@ const ready = b.tickets
   .filter(t => (t.depends_on || []).every(d => byId[d]?.status === 'closed'))
   .map(t => t.id);
 
-// --- capped (hit the attempt cap) & stuck (thrashing) — checked over READY
-//     tickets, before re-dispatch. Both are walls: a ticket in either set is
-//     held out of dispatch until a human intervenes.
-const caps = b.caps || { maxAttempts: 3, thrash: 2 };
+// --- capped (hit the merit-attempt cap) & stuck (thrashing) — checked over
+//     READY tickets, before re-dispatch. Both are walls held out of dispatch
+//     until a human intervenes. Infra failures (worker session died, moved
+//     mainline) never count toward a wall — a ticket earns one only by failing
+//     on its own merits — but a large infraCap still stops a dead engine from
+//     re-dispatching forever. Mirror of src/campaign/frontier.ts findWalls.
+const INFRA_SENTINELS = new Set(['worker-channel', 'merge-conflict']);
+const isInfra = a => {
+  if (a.infra) return true;
+  const f = Array.isArray(a.failed) ? a.failed : a.failed ? [a.failed] : [];
+  return f.length > 0 && f.every(x => INFRA_SENTINELS.has(x));
+};
+const caps = b.caps || { maxAttempts: 3, thrash: 2, infraCap: 8 };
+const infraCap = caps.infraCap ?? 8;
 const capped = [];
 const stuck = [];
 for (const id of ready) {
   const t = byId[id];
-  const a = t.attempts || [];
-  if (a.length >= caps.maxAttempts) capped.push({ ticket: id, attempts: a.length });
-  if (a.length >= caps.thrash) {
-    const recent = a.slice(-caps.thrash).map(x => new Set(x.failed || []));
+  const all = t.attempts || [];
+  const merit = all.filter(a => !isInfra(a));
+  const infra = all.length - merit.length;
+  if (merit.length >= caps.maxAttempts) capped.push({ ticket: id, attempts: merit.length });
+  else if (infra >= infraCap) capped.push({ ticket: id, attempts: all.length });
+  if (merit.length >= caps.thrash) {
+    const recent = merit.slice(-caps.thrash).map(x => new Set(x.failed || []));
     // thrash: failing set not shrinking across the window
     let shrinking = false;
     for (let i = 1; i < recent.length; i++) if (recent[i].size < recent[i - 1].size) shrinking = true;
