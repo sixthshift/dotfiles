@@ -44,7 +44,10 @@ services:
     ports:
       - '3000:3000' # {{API_LABEL}}
       - '5173:5173' # Vite dev server
-    command: sleep infinity
+    # The start hook lives here, not in devcontainer.json's `postStartCommand`,
+    # because only the compose command fires on a plain `docker compose up`.
+    # `exec` so the idle process stays PID 1 and stops cleanly.
+    command: bash -c 'bash /workspace/.devcontainer/post-start.sh; exec sleep infinity'
     working_dir: /workspace
     # {{IF_POSTGRES}}
     depends_on:

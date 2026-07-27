@@ -41,14 +41,18 @@ RUN curl -fsSL https://bun.sh/install | bash -s "bun-v1.3.9"
 
 WORKDIR /workspace
 
-# Install typescript-language-server (used by mcp-language-server below)
+# typescript-language-server (driven by mcp-language-server below). Baked as a
+# floor only — post-start.sh reinstalls it current on every container start.
 RUN bun add -g typescript-language-server
 
-# Install Claude Code CLI (native binary)
+# Install the agent CLIs. These two layers are a floor, not a pin — they sit in
+# the cache-aligned block above, so they go stale silently; post-start.sh
+# re-installs both on every container start. Baking them keeps the container
+# usable when upstream is down.
 RUN curl -fsSL https://claude.ai/install.sh | bash
 ENV PATH="/root/.local/bin:${PATH}"
 
-# Install OpenAI Codex CLI (standalone binary → /root/.local/bin, already on PATH)
+# OpenAI Codex CLI (standalone binary → /root/.local/bin, already on PATH)
 RUN curl -fsSL https://chatgpt.com/codex/install.sh | sh
 
 # Install Go (for mcp-language-server)
@@ -63,6 +67,7 @@ RUN go install github.com/isaacphi/mcp-language-server@latest
 # {{IF_POSTGRES}}
 RUN apt-get update && apt-get install -y --no-install-recommends postgresql-client \
     && rm -rf /var/lib/apt/lists/*
+# Floor only; post-start.sh reinstalls it alongside the other global tools.
 RUN bun add -g drizzle-kit
 # {{END_IF_POSTGRES}}
 
@@ -81,6 +86,7 @@ RUN install -m 0755 -d /etc/apt/keyrings \
 RUN bunx playwright install --with-deps chromium
 # {{END_IF_PLAYWRIGHT}}
 
-# Setup shell configuration (last: changes most often, keeps cache above intact)
-COPY .devcontainer/shell-config.sh /root/.shell-config.sh
-RUN echo 'source /root/.shell-config.sh' >> /root/.bashrc
+# Source the shell config off the workspace bind mount rather than COPYing it,
+# so an alias edit costs a new shell instead of a rebuild. Guarded because the
+# mount is absent when this image is run outside the devcontainer.
+RUN echo '[ -f /workspace/.devcontainer/shell-config.sh ] && source /workspace/.devcontainer/shell-config.sh' >> /root/.bashrc

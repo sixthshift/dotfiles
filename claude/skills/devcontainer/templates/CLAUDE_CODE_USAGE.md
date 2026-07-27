@@ -14,6 +14,10 @@ claude auth login
 
 Claude config persists in `claude-config`. Host Codex auth is imported into the separate `codex-config` volume during container creation; subsequent token refreshes stay container-local. Both volumes survive rebuilds.
 
+## Every start
+
+`.devcontainer/post-start.sh` runs on each container start (~15s): it reinstalls Claude Code, Codex, and the global dev tools to current, then runs `bun install` so a branch switch can't leave `node_modules` stale. Every step tolerates failure — if a download can't reach the network you get a warning on stderr and the version baked into the image, never a container that refuses to start. Edit the script and restart; no rebuild needed. Same for the aliases in `.devcontainer/shell-config.sh` — edit, then open a new shell.
+
 ## Using Claude Code
 
 ```bash
