@@ -30,38 +30,85 @@ spec_version: 1          # bumped by change orders after lock
 
 - ...
 
-## Phases (de-risk order)
+## Requirements
 
-<!-- Riskiest phase FIRST: the thing most likely to sink the project gets
-     built and gated before anything depends on it. Each phase names its
-     deliverable and its executable "done means" — a command with an expected
-     result, or a behavioral contract with concrete contrasting input→output
-     examples. Prefer contrast checks ("given A → X; given B → must differ in
-     THIS way") over existence checks — existence is the most gameable form. -->
+<!-- The flat list of every normative in-scope clause. NO PHASES — the loop CLI
+     drives one campaign-level gate, and phase headings are flattened away
+     silently, taking your ordering with them (state ordering below instead).
 
-### Phase 0 — <the riskiest thing>
+     Kickoff enumerates these as R1, R2, … exactly once; tickets then carry
+     `satisfies: [R…]`, progress is counted against them, and the final coverage
+     pass grades proof clause by clause. A clause omitted here is one nothing
+     downstream is looking for.
 
-**Why first:** <the risk this retires>
+     One clause per requirement, worded so whether it holds is decidable by
+     inspection. Each carries its own executable acceptance. Prefer contrast
+     checks ("given A → X; given B → must differ in THIS way") over existence
+     checks — existence is the most gameable form. Anything knowingly
+     unverifiable belongs under Known limits, NOT here: kickoff refuses to start
+     on a normative requirement no command can settle. -->
 
-**Deliverable:** ...
+### <short name of the requirement>
 
-**Done means (executable):**
+<the clause, stated so it is decidable by inspection>
+
+**Acceptance:**
 - `<command>` → <expected result>
 - Behavioral: given <concrete input A> → <expected output>; given
   <contrasting input B> → output must differ: <how>
 
-### Phase 1 — <name>
+### <next requirement>
 
-**Deliverable:** ...
+...
 
-**Done means (executable):**
-- ...
+## Ordering constraints
+
+<!-- The loop sequences work through per-ticket `depends_on` edges derived at
+     decompose time, so ordering is conveyed by stating the constraint AGAINST
+     the work — never by grouping requirements under a heading. Give each one a
+     reason a decomposer can act on: a shared file, an inverted baseline, a
+     schema both sides read. Keep them all here so none is buried in prose. -->
+
+- <requirement A> must land before <requirement B> — because <the concrete
+  reason: they share this file / A inverts the baseline B asserts against / …>
+
+## Checks
+
+<!-- Candidate commands, for kickoff to probe and classify into tiers. Naming
+     them is wanted; wiring them into tiers is kickoff's job, not yours. -->
+
+- **Fast-check candidates** (safe to repeat per ticket, seconds to ~1 min, and
+  must be GREEN at baseline — a red baseline is a blocker): `<command>`
+- **Gate candidates** (merged-tree integration/e2e; slow suites and anything
+  needing shared mutable infrastructure belong here): `<command>`
+- **Expected-red gates**, if any: `<command>` — red at kickoff because <the
+  behavior this campaign builds that will turn it green>.
+
+## Known limits
+
+<!-- Non-normative, and explicitly so. Anything the human has knowingly made
+     unprovable (a path needing credentials they won't supply, a third-party
+     round trip) lives here rather than in Requirements, or kickoff refuses to
+     start. If a check for it exists, write it and mark it skipped WITH its
+     reason — never replace it with a weaker one that passes. These graduate into
+     the repo's durable docs when the campaign closes. -->
+
+- <the limit> — unverifiable because <why>; the consequence is <what ships
+  unproven>.
 
 ## Environment & preconditions
 
 <!-- What must exist for the checks to run: API keys/secrets, external
-     services, runtimes, network access. ailoop probes these at intake — a
-     missing one is a refuse-to-start, so surface them here, not mid-build. -->
+     services, runtimes, network access. Kickoff probes these — a missing one is
+     a refuse-to-start, so surface them here, not mid-build.
+
+     Also gating, though not spec content: kickoff runs
+     `git status --porcelain --untracked-files=all` and treats ANY tracked
+     modification as a blocker. The only tolerated untracked paths are exactly
+     `.ailoop/learnings/{checks.json,flakes.json,sizing.md,gaming.md,landmines.md}`;
+     any other untracked path blocks too. `.gitignore` must contain the exact
+     lines `.ailoop/campaign/` and `.ailoop/worktrees/`. Note here what the human
+     still needs to commit. -->
 
 - ...
 

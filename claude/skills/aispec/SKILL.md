@@ -34,17 +34,73 @@ The relationship between the two skills is exact:
 
 ## The contract — what the spec must supply
 
-ailoop's intake extracts these; a spec missing any of them bounces:
+The target is the **`loop` CLI** (`loop campaign <spec.md>`). Its kickoff stage
+reads the locked spec **exactly once** into a campaign config and extracts these;
+a spec missing any of them bounces:
 
-1. **Phases in de-risk order** — the riskiest thing builds and gates first.
+1. **Requirements — a flat, numbered list of every normative in-scope clause.**
+   Kickoff enumerates them as `R1`, `R2`, … and this happens *once*: tickets
+   carry `satisfies: [R…]`, the frontier counts progress against them, and the
+   final coverage pass grades proof clause by clause. **A clause you omit is one
+   nothing downstream is looking for.** One clause per requirement, worded so
+   that whether it holds is decidable by inspection.
 2. **Locked decisions** — stack, data model, architecture, "do not add X":
    every choice a builder could stall on or re-litigate, decided.
-3. **Out-of-scope list** — the tripwire ailoop halts on. Explicit, not implied.
-4. **Per-phase acceptance, executable as written** — a command with an
+3. **Out-of-scope list** — the tripwire the loop halts on. Explicit, not implied.
+4. **Per-requirement acceptance, executable as written** — a command with an
    expected result, or a behavioral contract with concrete input→output
-   examples sharp enough that ailoop can mechanize it into a runnable check.
-5. **Environment preconditions** — keys, services, runtimes the checks need;
-   ailoop probes these at intake and a missing one is a refuse-to-start.
+   examples sharp enough that kickoff can mechanize it into a runnable check.
+5. **Two check tiers, campaign-wide** — `fastChecks` (safe to repeat per ticket,
+   seconds to ~1 minute, and **green at baseline**; a red baseline is a blocker)
+   and `gate` (the merged-tree integration/e2e set). A `gate` check may be red at
+   kickoff *only* when it ran correctly and the failure is specifically behavior
+   this campaign will build.
+6. **Environment preconditions** — keys, services, runtimes the checks need;
+   kickoff probes these and a missing one is a refuse-to-start.
+
+**There are no phases.** The `loop` CLI drives a single campaign-level gate; only
+the older `ailoop` *skill* retains per-phase gating, and that divergence is
+deliberate (see `frontier.ts`). Write phases into a spec and they are flattened
+away silently, taking your de-risk ordering with them. Express ordering the way
+the loop actually models it — see below.
+
+### Ordering is dependencies, not phases
+
+The loop sequences work through per-ticket `depends_on` edges derived at
+decompose time. So a spec conveys ordering by **stating the constraint against
+the work**, not by grouping requirements under headings:
+
+- Good: "R7 (the readiness gate) must land before any requirement that seeds or
+  asserts the catalogue, because it inverts the published-title baseline."
+- Useless: a `## Phase 2` heading containing R7.
+
+Give every ordering constraint a *reason a decomposer can act on* — a shared
+file, an inverted baseline, a schema both sides read. Put them in one section so
+none is buried in prose.
+
+### Unverifiable requirements are blockers — keep them out of the normative set
+
+Kickoff refuses to start when a normative in-scope requirement has no
+deterministic command that can settle it. So anything knowingly unverifiable —
+a path needing credentials the human won't supply, a third-party round trip —
+must **not** sit in the requirements list. Move it to a `## Known limits`
+section, state plainly that it is non-normative, and if a check for it exists,
+write it and mark it skipped with its reason. A deferred check smuggled into the
+requirements list is a refuse-to-start; a deferred check quietly replaced by a
+weaker passing one is worse.
+
+### The clean-tree precondition — check it before you lock
+
+Kickoff runs `git status --porcelain --untracked-files=all` and treats **any
+tracked modification as a blocker**. The only untracked paths it tolerates are
+exactly `.ailoop/learnings/{checks.json,flakes.json,sizing.md,gaming.md,landmines.md}`;
+**any other untracked path is a blocker too**, because workers start from
+committed HEAD. It also requires `.gitignore` to contain the exact lines
+`.ailoop/campaign/` and `.ailoop/worktrees/`.
+
+None of that is the spec's content, but all of it decides whether the campaign
+can start — so check it at lock time and tell the human what to commit. A
+perfect spec against a dirty tree still bounces.
 
 ## Durable state — the spec file is the whole memory
 
@@ -102,7 +158,7 @@ scope.)
    Questions entry. This is the coverage discipline ailoop later enforces
    ticket-side; it starts here.
 4. **Prime from learnings** (if `.ailoop/learnings/` exists): `sizing.md`
-   informs how finely to cut phases (what proved too big last campaign);
+   informs how finely to cut requirements (what proved too big last campaign);
    `landmines.md` suggests environment preconditions the human forgot to
    mention; `checks.json` names the toolchain commands acceptance should be
    phrased against. Low-evidence entries are hypotheses to raise, not facts
@@ -114,8 +170,8 @@ scope.)
 
 ### Iterate invocations — burn down the questions
 
-1. Read the spec; work from Open Questions, **riskiest phase deepest** — it
-   builds first, so its ambiguity is the most expensive kind.
+1. Read the spec; work from Open Questions, **riskiest requirement deepest** —
+   the work others depend on carries the most expensive ambiguity.
 2. Ask (see Interrogation craft), and land each answer in the spec
    immediately — the question entry is deleted, the section is updated in the
    same edit. Newly discovered ambiguities become new entries.
@@ -131,9 +187,12 @@ it is their contract:
 - [ ] Open Questions is empty — every entry **answered by the human** or its
       feature cut (the two-exit rule, see Interrogation craft). Silent
       disappearance is not resolution, and neither is a lock-time default.
-- [ ] Every phase's "done means" is executable **as written** — command +
-      expected result, or behavioral contract with concrete contrasting
-      input→output examples. No vibes.
+- [ ] Every requirement is **decidable by inspection** and its acceptance is
+      executable **as written** — command + expected result, or behavioral
+      contract with concrete contrasting input→output examples. No vibes.
+- [ ] **No unverifiable requirement sits in the normative set** — anything the
+      human has knowingly made unprovable lives under `## Known limits`, not in
+      the requirements list, or kickoff refuses to start.
 - [ ] **Red-team pass by a fresh agent** — spawn one cold agent whose only
       input is the spec file (plus `.ailoop/learnings/gaming.md` when it
       exists — the cheat shapes past campaigns actually produced are its
@@ -144,9 +203,16 @@ it is their contract:
       You wrote the wording; you cannot also be the one who checks it for
       blind spots. Every cheat or blind spot found = sharpen now, while
       rewording is cheap.
-- [ ] De-risk order confirmed with the human — the riskiest phase is first
-      and they agree it's the riskiest.
+- [ ] **Ordering constraints stated as dependencies** — each with a reason a
+      decomposer can act on, gathered in one section, and confirmed with the
+      human as the right de-risk order.
 - [ ] Environment preconditions listed and, where checkable now, checked.
+- [ ] **`fastChecks` candidates verified green at baseline**, and any `gate`
+      expected to be red identified with the behavior that will turn it green.
+- [ ] **Working tree clean, `.gitignore` correct** — no tracked modifications,
+      no untracked paths beyond the five `.ailoop/learnings/*` files, and exact
+      `.ailoop/campaign/` + `.ailoop/worktrees/` lines present. Tell the human
+      what to commit; a perfect spec against a dirty tree still bounces.
 
 This checklist aims at ailoop's intake; it does not replace it. Intake is the
 authoritative gate and runs before any build spend — a spec that bounces there
@@ -163,7 +229,7 @@ Then stamp `status: locked` and hand off: **"run `/ailoop`."**
   interpretation is out-of-scope material; harvest it.
 - **Behavioral probes.** "Give me a real input and the output you'd expect —
   now give me one where the output must differ." Every answered probe is a
-  contrast check that drops straight into a phase's "done means". This is how
+  contrast check that drops straight into a requirement's acceptance. This is how
   vibes become oracles, and it is the highest-value question you have.
 - **Decide loudly, ask rarely.** ailoop wants over-specification, but
   interrogating every default is fatigue that kills the session. Lock
@@ -231,9 +297,9 @@ the human, don't infer:
      permanent policy — anything constraining work that doesn't exist yet)
      → promote to the repo's durable docs (AGENTS.md, CLAUDE.md, docs/) if not already
      there; the new spec **cites** it as standing, never restates it.
-  3. **Campaign-relative** (phases and ordering, done-means checks — already
-     graduated into the test suite — this drive's out-of-scope tripwire,
-     change orders) → dies with the file.
+  3. **Campaign-relative** (the requirement enumeration and its ordering
+     constraints, acceptance checks — already graduated into the test suite —
+     this drive's out-of-scope tripwire, change orders) → dies with the file.
   Then **delete the graduated spec** — every line now lives in code, docs,
   or nowhere by decision — and scaffold the new spec pre-seeded with the
   standing constraints (cited) and an "already exists" context read from
@@ -259,12 +325,15 @@ with nobody noticing. On any post-lock change request:
 
 ## Division of labor — what aispec must NOT do
 
-- **No backlog seeding, no ticket sizing, no fastChecks or phase-gate
-  seeding.** That is ailoop intake's job; doing it twice creates two sources
-  of truth. You get the acceptance *stated* precisely enough to mechanize —
-  ailoop mechanizes it.
+- **No backlog seeding, no ticket sizing, no `depends_on` edges, no assigning
+  `R` ids.** Kickoff numbers the requirements and decompose cuts the tickets;
+  doing either here creates two sources of truth. You state the clauses and their
+  ordering constraints precisely enough to mechanize — the loop mechanizes them.
+  (Naming *candidate* check commands is fine and wanted; wiring them into tiers
+  is kickoff's.)
 - **No building.** Not even a prototype "to check feasibility" — a feasibility
-  doubt is an Open Questions entry or a Phase 0, not a side project.
+  doubt is an Open Questions entry or its own early requirement, not a side
+  project.
 - The spec is the **human-owned contract**; `.ailoop/campaign/` is machine-derived
   state and `.ailoop/learnings/` is machine-curated memory. aispec *reads*
   learnings to interrogate better; it writes only the spec.
