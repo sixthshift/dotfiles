@@ -30,18 +30,21 @@ stop — you're doing a script's job, badly.
 | **Ticket** | One unit of work, sized for a single fresh worker session. |
 | **Backlog** | `backlog.json` — every ticket, its status, dependencies, history. |
 | **Frontier** | The ready tickets safe to spawn right now — file- and resource-disjoint from everything in-flight (computed, never stored). |
+| **Requirements** | The spec's normative clauses, enumerated once at intake as `R1`, `R2`, … Tickets claim them; coverage is a join, not a verdict. |
 | **Acceptance criteria** | A ticket's definition of done: prose + runnable checks. |
 | **Verify** | Script re-runs the checks independently. Facts, no model. |
 | **Gaming check** | An agent reads the diff: did checks pass *for the right reason*? |
 | **Judge** | You. Take verify's facts + the gaming read, deliver the verdict. |
 | **Reintegration** | At phase close: do the closed tickets *compose* into what the phase promised? |
+| **Recover** | The universal else: one full-tool agent per anomaly the frontier can't resolve. Fixes the campaign definition or the environment — never product code. |
+| **Park** | Defer ONE decision to the human without stopping. The loop keeps driving everything else and drains only when nothing autonomous is left. |
 | **Journal** | Append-only history of every decision. Inside `backlog.json`'s sibling `journal.jsonl`. |
 | **Learnings** | `.ailoop/learnings/` — curated cross-campaign memory. Git-tracked, survives campaigns. |
 
 ## The two state trees
 
 - **`.ailoop/campaign/`** — the campaign's working memory: `backlog.json`,
-  `journal.jsonl`, `evidence/`, and the six scripts copied from
+  `journal.jsonl`, `evidence/`, and the scripts copied from
   `templates/` at intake. Untracked in git. Created at intake, deleted at
   campaign close. **Its presence = a campaign is in flight**; if it exists,
   never re-run intake — resume (see Resume).
@@ -59,8 +62,12 @@ will be lost — the fix is to write it down now, not to remember harder.
   "id": "T017",
   "title": "Add POST /session login endpoint",
   "status": "draft",        // draft → vetted → in-flight → closed
-                            // side states: blocked | decomposed | failed-wall
+                            // side states: blocked (transient, you rewire it) |
+                            // parked (deferred to the human) | decomposed
   "phase": "P2",            // spec phase this ticket closes toward
+  "satisfies": ["R4", "R5"],// requirement ids from the intake enumeration this ticket
+                            // delivers. The sole writer refuses an id that isn't
+                            // enumerated — a claim nothing joins to reads as coverage.
   "depends_on": ["T003"],
   "files": ["src/server/auth.ts"],  // NON-EMPTY. The worker's declared footprint —
                             // verify.mjs fails any diff outside it (+ manifest/lockfiles).
@@ -84,10 +91,25 @@ will be lost — the fix is to write it down now, not to remember harder.
 Top-level in `backlog.json`: `project`, `caps: { maxAttempts: 3, thrash: 2 }`,
 `fastChecks` (the baseline every ticket must clear — type-check, build, lint,
 unit suite; detected from the project manifest at intake), `phases`
-(`[{id, delivers, gate: [{name, cmd}]}]` — the spec section each phase
-delivers and its gate commands), and `outOfScope`
+(`[{id, delivers, gate: [{name, cmd}], parked?}]` — the spec section each phase
+delivers and its gate commands), `outOfScope`
 (the tripwire list — features the spec forbids; a build that crosses it halts,
-never proceeds).
+never proceeds), and `requirements` (`[{id: "R1", clause}]` — the spec's
+normative clauses, enumerated once at intake).
+
+**Why the enumeration exists.** Closed tickets measure the backlog against
+itself. Requirements measure it against the *spec*, which is the only way to
+notice work nobody wrote a ticket for — while there is still time to write one.
+Frontier joins the two on every pass, so "3 clauses nobody claimed" surfaces
+mid-campaign instead of at termination, after the whole tree was built around the
+absence. The two counts answer different questions and can disagree: a campaign
+can be 8/8 tickets closed with a clause no ticket ever claimed.
+
+The list is made once, by you, before any code exists — so it is load-bearing,
+and a clause missed there is invisible to every count downstream. Two things
+hedge that: the pre-flight report prints it at the one moment a human is
+present, and the terminal coverage pass re-reads the spec against the list and
+reports clauses missing from it as enumeration gaps.
 
 ## The scripts
 
@@ -95,23 +117,33 @@ Copied from `templates/` into `.ailoop/campaign/` at intake. Their contracts:
 
 - **`backlog-write.mjs` — the sole writer.** Every mutation of `backlog.json`
   is a command: `init`, `seed` (campaign config — `fastChecks`, `phases`,
-  `outOfScope`; a post-ticket change requires `--amend --note "why"`, journaled
-  as an amendment), `add` (tickets via JSON file/stdin), `update` (a
-  draft/vetted ticket's contract fields — sharpen checks, rewire deps, narrow
-  files; a vetted ticket demotes to draft for re-vet), `set-status`, `vet`,
-  `attempt`, `close`, `decompose`, `note`. It validates schema, enforces
-  legal status transitions, auto-appends a stamped journal entry per mutation,
-  and refuses illegal edits (closing a ticket without evidence, vetting one
-  with empty `files`). **You never open backlog.json in an editor. Ever.**
+  `outOfScope`, `requirements`; a post-ticket change requires `--amend --note
+  "why"`, journaled as an amendment), `add` (tickets via JSON file/stdin),
+  `update` (a draft/vetted ticket's contract fields — sharpen checks, rewire
+  deps, narrow files; a vetted ticket demotes to draft for re-vet;
+  `--reset-attempts --note` clears an attempts log the contract change made
+  meaningless), `set-status`, `vet`, `attempt`, `close`, `decompose`, `park` /
+  `unpark` (a ticket, or `--phase <id>` for a phase gate), `gate` (upsert a
+  phase's gate checks — see §2.5), `note`. It validates schema, enforces legal
+  status transitions, auto-appends a stamped journal entry per mutation, and
+  refuses illegal edits (closing a ticket without evidence, vetting one with
+  empty `files`, claiming an unenumerated requirement, parking without a
+  reason). **You never open backlog.json in an editor. Ever.**
 - **`frontier.mjs` — the gate.** Read-only. Prints JSON: `problems` (dangling
   deps, cycles, empty files, dependents stranded on decomposed tickets),
   `ready` (deps closed AND `vetted`), `dispatchable` (the subset of `ready`
   safe to spawn *right now* — file- AND resource-disjoint from every in-flight
-  ticket and from each other), `capped` + `stuck`,
-  `phasesDone`, `inFlight`, `complete`. Two structural guarantees, not
-  rules you remember: a ticket that isn't vetted **cannot appear in ready**,
-  and two tickets that would collide (same file, or same declared resource)
-  **cannot both appear in dispatchable**.
+  ticket and from each other), `capped` + `stuck`, `phasesDone`, `gateParked`,
+  `inFlight`, `parked`, `stalled`, `complete`, and `coverage`
+  (`{requirements, unmapped, proven}` — the spec-side join). Two structural
+  guarantees, not rules you remember: a ticket that isn't vetted **cannot appear
+  in ready**, and two tickets that would collide (same file, or same declared
+  resource) **cannot both appear in dispatchable**.
+- **`jurisdiction.mjs` — recover's enforced boundary.** `snapshot` before you
+  spawn recover, `revert` after it returns: any tracked, non-manifest file it
+  changed is undone and reported. Prose is the wrong enforcement layer for the
+  one agent that can edit what every other arm is measured against. See
+  `references/recover.md`.
 - **`verify.mjs` — the measurement.** Run against a worker's worktree:
   `node .ailoop/campaign/verify.mjs --ticket T017 --dir <worktree> --base <sha>`.
   Refuses a dirty tree; runs the full `fastChecks` + the ticket's
@@ -143,8 +175,9 @@ Reasoning runs top-tier; measurement is scripted. You (coordinator) and
 builders default **opus** — building is design-and-debugging, and a stronger
 builder escapes fewer bugs into verify. Opt a ticket *down* (`model:
 "sonnet"|"haiku"`) only when it's obviously mechanical. Critic pass and gaming
-checks run **sonnet** — narrow questions, explicit rubrics. verify.mjs costs
-no model at all.
+checks run **sonnet** — narrow questions, explicit rubrics. **Recover runs
+opus**: it holds full tools on the shared checkout and its output is a diagnosis
+nobody re-derives. verify.mjs costs no model at all.
 
 ---
 
@@ -171,16 +204,29 @@ node .ailoop/campaign/frontier.mjs
 Act on its output in this order — never on your own reading of the backlog:
 
 - `problems`/`cycles` → fix via `backlog-write.mjs` if it's bookkeeping
-  (journal explains why), else escalate.
+  (journal explains why), else **recover** (`frontier-problems`). Hand a given
+  problem-set to recover *once*; if it survives, it's parked — don't re-attempt
+  it every pass.
 - `inFlight` entries you have **no live worker for** are stale → reconcile
   first (see Resume). Your own running workers appearing here is normal —
   frontier reports the fact; you supply the staleness judgment.
-- `capped`/`stuck` → those tickets are walls. Escalate them with
-  the `attempts` log as your diagnosis; do not dispatch them again.
+- `capped`/`stuck` → a merit wall is a decision, not a dead end. **Recover**
+  (`attempt-wall`), which reads the attempt hypotheses and fixes the campaign's
+  definition at the root — a check that never matched the DoD, a contract
+  contradicting a delivered dependency, an under-built dependency (repair ticket
+  + rewire). Two distinct recovery attempts per wall, then park it. Either way
+  the ticket leaves `ready`, so keep driving everything disjoint.
 - `phasesDone` with an unrun gate → run phase close (2.5) before new work.
+  Skip any phase in `gateParked` — its gate is latched for the human.
+- `coverage.unmapped` non-empty → clauses nobody claimed. Write those tickets
+  now, while the tree can still absorb them. A clause that looks *already
+  delivered* by a closed ticket gets a ticket too — a check-only one that claims
+  the clause and whose acceptance proves it at the boundary the clause names.
+  `satisfies` is immutable on purpose: re-pointing a closed ticket's claim would
+  turn a coverage gap into coverage without anything new being proven.
 - `complete: true` → Termination.
-- `ready` empty but `complete` false → blocked graph or walls; resolve or
-  escalate. **Never report done over live blocked tickets.**
+- `stalled: true` → nothing is moving. **Recover** (`stalled`), then re-read the
+  frontier. Only a stall that survives recover is the human's — see Park.
 - Otherwise `dispatchable` is the set safe to spawn **now**. Dispatch is
   continuous, not batched: spawn each, and the moment any worker returns and
   you finish judging it (2.4), re-run frontier and spawn whatever its
@@ -198,7 +244,11 @@ structured findings `{ticketId, issue, severity}`:
 2. **Blindness** — assume an honest builder: what real defect can these checks
    structurally not see? (A check reading through an admin connection can't
    see a missing grant; one reading the app's echo can't prove persistence.)
-3. **Coverage** — what in this ticket's slice of the spec maps to no check?
+3. **Coverage** — what in this ticket's slice of the spec maps to no check? And
+   does every clause in `satisfies` actually get *proven* by this ticket's
+   acceptance, or is the claim wider than the checks? An over-claim is the one
+   critic finding that must be fixed rather than accepted as a risk: it reads as
+   coverage for the rest of the campaign.
 4. **Dependency** — which `depends_on`/`files` assumptions look wrong?
 5. **Scope** — does anything here exceed what the spec asked?
 
@@ -260,23 +310,36 @@ Per returned ticket, three layers in order:
      postmortem.mjs prices, and close is the only moment it exists. Then merge
      the branch into the mainline. If the mainline moved past this worker's `baseSha`, re-run the
      fast tier on the merged tree — the integration gate the old batch merge
-     gave you for free. The close `--note` is where a finding worth harvesting
-     lands in the journal; there is no separate telemetry sidecar.
+     gave you for free; red there is **recover** (`integration-red`), not a
+     reopened ticket. A merge that refuses because the mainline is dirty is also
+     recover (`dirty-mainline`), then retry the merge — the branch was judged
+     closeable and must not burn an attempt on someone else's mess. The close
+     `--note` is where a finding worth harvesting lands in the journal; there is
+     no separate telemetry sidecar.
    - **Failed** → `backlog-write.mjs attempt <id>` with the failing check
      names (verify's `failing` array verbatim), your hypothesis, the fixNote,
      and the same `--data` worker telemetry; re-dispatch with the log. frontier.mjs enforces the caps.
    - **Gamed** (you confirm the flag against the spec's intent) → a failed
      attempt **and** the escaped-bug rule: sharpen the cheated check before
-     re-dispatch.
+     re-dispatch. A flag you *cannot* rule on against the spec is **recover**
+     (`judge-escalate`) — you dispatched this ticket, so "I can't tell" from you
+     is the builder's advocate hedging, not a verdict.
    - **tooBig** → `backlog-write.mjs decompose <id>` with the children;
      rewire the parent's dependents to the children; children are born draft →
-     critic pass. Expected and healthy.
-   - **blocked** → orderable dependency: fix the edge, requeue. Spec
-     contradiction: escalate.
+     critic pass. Expected and healthy. A `tooBig` with no proposed children is
+     not a split — **recover** (`toobig-without-split`).
+   - **blocked** → orderable dependency: fix the edge, requeue. Anything else —
+     including an apparent spec contradiction — goes to **recover**
+     (`worker-blocked`) with the instruction to test the block against a
+     completed dependency first: most contradictions are a merged ticket built
+     wrong against the spec, which is a repair ticket and a rewire, not a
+     question for the human. What the locked spec genuinely doesn't answer comes
+     back unresolved, and you park it with recover's reason.
    - **The check is wrong** → amendment tiers: *typo-level* (wrong command,
      port, path — letter not meaning) fix yourself with a journal entry;
-     *meaning-level* (what behavior counts as done) **always escalate**. A
-     stuck loop weakening its own checks is the loop grading its own homework.
+     *meaning-level* (what behavior counts as done) **always parks** — it never
+     goes to recover either. A stuck loop weakening its own checks is the loop
+     grading its own homework, and recover is part of the loop.
 
 **The escaped-bug rule (both levels).** Any defect that passed a check and was
 caught later — gaming read, later ticket, phase gate — means the repair must
@@ -292,38 +355,84 @@ When frontier.mjs reports a phase drained:
 1. Run the phase's **gate commands** (slow suites, e2e) on the merged tree —
    per-ticket verification deferred these on purpose.
 2. **Reintegration judgment** (you, thinking hard): read the phase's spec
-   section against what its tickets delivered. Do the pieces *compose* into
-   what the phase promised — interfaces actually matching, the sum serving
-   the section's intent? Green checks on parts do not prove the whole. Check
-   the delivered diff against `outOfScope` too — a drained phase is the
-   checkpoint where scope creep surfaces; a crossed tripwire halts and
-   escalates, it is never built past.
+   section against what its tickets delivered — and against the `satisfies`
+   claims of its closed tickets, which is where a claim made at birth meets what
+   was actually built. Do the pieces *compose* into what the phase promised —
+   interfaces actually matching, the sum serving the section's intent? Green
+   checks on parts do not prove the whole. Check the delivered diff against
+   `outOfScope` too — a drained phase is the checkpoint where scope creep
+   surfaces; a crossed tripwire **parks** immediately, it is never built past.
+   Pieces that don't compose and can't be repaired by a ticket you can write
+   yourself → recover (`reintegration-no-compose`).
 3. Gate red after clean merges → no scapegoats and **you never patch the tree
    yourself**: bisect (run the failing checks on base + each branch alone, in
-   parallel), then spawn a repair ticket carrying the evidence, origin
-   `"repair: phase gate red after <ids>"`, born draft → critic pass. Escaped-
-   bug rule applies at phase level.
+   parallel), then hand it to **recover** (`phase-gate-red`) with the evidence
+   and the branches. A red gate is one of two things and recover decides which:
+   a real escaped bug (a repair ticket whose checks *also* strengthen what let it
+   through, born draft → critic pass) or a gate-scoping fault (the gate runs the
+   wrong things, or contends on shared state — narrow or serialize it and run the
+   correction green). Neither → it returns unresolved and you
+   `park --phase <id>`, which latches the gate so `gateParked` keeps you from
+   re-running it. Escaped-bug rule applies at phase level.
+
+   **Gate amendment authority.** `backlog-write.mjs gate <phase>` upserts by
+   name, and the name is what splits two different acts. A name not in force
+   only *adds* coverage, so any arm may propose it — closing a spec-mandated
+   coverage hole is the escaped-bug rule doing its job, not a question for the
+   human. Reusing a live name *replaces* the command deciding correctness, which
+   can turn a real escaped bug into a green phase; no comparison of two shell
+   strings can prove that's a tightening. So you pass `--replace` for exactly one
+   caller: a recover answering *that phase's own* red gate, the one invocation
+   that held the failure and could re-run the correction green. Both acts are
+   journaled with the command they displaced.
 4. Green → journal the phase close, prune merged branches. (Keep branches
    until green — bisection needs them.)
 
 Catching drift per-phase is the point: a phase whose checks were seeded
 slightly wrong must surface here, not at the end of the campaign.
 
-### Escalation
+### 2.6 Recover — the universal else
 
-Escalate — with the ticket, the last verify output, your diagnosis (the
-`attempts` log writes most of it), and the specific decision you need — when:
-caps/thrash breach, spec contradiction, meaning-level amendment, scope
-tripwire, or a blocked graph you cannot legally rewire. An escalation closes
-nothing: `.ailoop/campaign/` stays put and the campaign resumes where it stopped.
-Never a rosy summary of a loop that didn't finish.
+Anything the frontier can't resolve and you can't fix as bookkeeping goes to one
+full-tool agent per anomaly: it diagnoses, fixes the campaign **definition** or
+the **environment**, runs the check to prove it, and hands you back lawful
+mutations. It never touches product code — a product defect becomes a repair
+ticket a worker builds and the reviewer judges.
+
+Read `references/recover.md` before the first call. It carries the anomaly table,
+the prompt, the enforced product-code boundary (`jurisdiction.mjs` snapshot →
+revert, run *before* you read the verdict), and the budget: **two prior
+resolutions of the same anomaly key and you park instead of calling.** An anomaly
+that returns after a successful repair is a defect in this loop, not a fresh
+fault, and a third fresh-context agent would only write a third confident success
+note. Count the `recovered` entries off the journal, never from memory.
+
+### Park — how the loop yields without stopping
+
+**A park defers one decision; it never ends the campaign.**
+`backlog-write.mjs park <id> --reason "..."` (or `--phase <id>` for a gate) takes
+that ticket out of the frontier's hands and journals why. You keep driving
+everything else. The campaign ends only when `stalled: true` survives a recover
+pass and nothing autonomous remains — then you **drain**: report every parked
+decision with its recorded reason and what evidence would settle it, leave
+`.ailoop/campaign/` exactly as it is, and stop. `progress.mjs` and the journal
+carry the picture; a resume continues from there.
+
+Park directly, without recover, for the four decisions that are the human's by
+construction: a meaning-level check amendment, a crossed `outOfScope` tripwire, a
+second flake probe on the same ticket, and a fault whose fix the locked spec
+genuinely doesn't answer. Everything else earns a recover attempt first.
+
+Never a rosy summary of a loop that didn't finish — and never a stop over work it
+could still have done.
 
 ## Termination
 
-`complete: true` and every phase gate green → read
-`references/retrospective.md` and follow it: the final coverage pass (unmapped
-spec requirements = NOT done), the report, the **retrospective harvest** into
-`.ailoop/learnings/`, then delete `.ailoop/campaign/` and close the campaign.
+`complete: true` (no live ticket — parked ones count as live), every phase gate
+green, and no phase in `gateParked` → read `references/retrospective.md` and
+follow it: the final coverage pass (an unproven requirement = NOT done), the
+report, the **retrospective harvest** into `.ailoop/learnings/`, then delete
+`.ailoop/campaign/` and close the campaign.
 
 ## Resume (`.ailoop/campaign/` exists)
 
@@ -333,9 +442,15 @@ Never re-run intake. Read the journal tail, run frontier.mjs, reconcile:
   session). Don't guess. The worker's branch exists → verify it
   like any result (green → judge; red → attempt entry, back to vetted). No
   branch → nothing durable happened; back to vetted.
+- **`parked` tickets and gates** — a resume does not clear them. If the human
+  answered, record it: `unpark <id> --note "<their answer>"` (the ticket returns
+  as draft and re-earns its critic pass, because the answer changed something).
+  If they didn't, drive everything else and drain again — re-parking is not an
+  event, so the report stays honest without accumulating noise.
 - **Spec changed since intake** (hash mismatch vs the one journaled at
   intake) → stop before any dispatch and reconcile with the human. Never
-  drive an old spec to green.
+  drive an old spec to green. This is a genuine hard stop, not a park: every
+  ticket in the backlog is measured against a contract that no longer exists.
 
 ## Learnings — the campaign-to-campaign loop
 
@@ -367,7 +482,14 @@ last-confirmed-campaign.
 - Start without a machine-checkable definition of done.
 - Dispatch an unvetted ticket (frontier.mjs makes this impossible).
 - Hand-edit `backlog.json` or the journal (backlog-write.mjs is the only door).
-- Weaken a meaning-level check without the human.
+- Weaken a meaning-level check without the human — recover included.
 - Trust a builder's self-report, at any level, ever.
 - Gaming-check a diff itself — the reader must be a fresh-context agent.
-- Report done over live blocked tickets or unrun phase gates.
+- Report done over live blocked or parked tickets, unrun phase gates, or a spec
+  clause nobody claimed.
+- **Stop while autonomous work remains.** One undecidable question parks; the
+  loop keeps driving and drains only when nothing is left.
+- **Let recover edit product code.** `jurisdiction.mjs` reverts it and the intent
+  goes through worker → verify → review like any other change.
+- **Believe a third recovery of the same anomaly.** Two resolutions that didn't
+  hold means the fault is in this loop; park with both fixes attached.

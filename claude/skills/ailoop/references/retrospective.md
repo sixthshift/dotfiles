@@ -1,24 +1,40 @@
 # Termination & retrospective
 
-Runs only when frontier.mjs reports `complete: true` AND every phase gate has
-been run green (check the journal for each phase-close entry — never your
-memory).
+Runs only when frontier.mjs reports `complete: true`, no phase sits in
+`gateParked`, and every phase gate has been run green (check the journal for each
+phase-close entry — never your memory).
 
 ## 1. Coverage pass
 
-Walk the spec section by section against closed tickets and phase-gate
-evidence. Every requirement maps to delivered, verified work — or the build
-is **not done**: spawn the missing tickets (draft → critic pass → drive
-resumes). An unmapped requirement discovered here is also a learnings
-candidate: the decomposition missed it once and could again.
+The arithmetic is already done: `coverage` in the frontier's output says which
+requirement ids every claiming ticket closed (`proven`) and which nobody claimed
+(`unmapped`). Don't re-count it. Spend this pass on the two questions counting
+can't answer:
+
+1. **Did each requirement's checks observe the boundary its clause names?** A
+   `proven` clause only means the claiming tickets' own checks went green where
+   they looked. A check reading through an admin connection didn't prove the
+   grant; one reading the app's echo didn't prove persistence. Walk each clause
+   against the acceptance checks that closed it and the phase-gate evidence.
+2. **What did the enumeration itself miss?** Re-read the spec against
+   `requirements`. A normative clause that never became an id is an *enumeration
+   gap* — the one failure mode the join is structurally blind to, because
+   `unmapped` can only count ids that exist.
+
+Anything unproven or missing becomes a new ticket (draft → critic pass → the
+drive resumes; the phase gates it re-opens must go green again). Both findings
+are learnings candidates: the decomposition missed it once and could again.
 
 ## 2. Final report
 
-To the human: what was built per phase, gate evidence pointers, check
-amendments made (typo-level self-served; meaning-level escalations and their
-resolutions), quarantined flakes as explicit residuals, escaped bugs and
-which checks got strengthened, walls hit. Computed from the journal and
-evidence files — never narrated from memory.
+To the human: what was built per phase, requirement coverage clause by clause,
+gate evidence pointers, check amendments made (typo-level self-served;
+meaning-level parked and how they were answered), gate replacements with the
+command each displaced, quarantined flakes as explicit residuals, escaped bugs
+and which checks got strengthened, every park and how it resolved, and the
+recover log — each anomaly kind, how often it fired, and any kind that fired
+enough to deserve a real arm in SKILL.md. Computed from the journal and evidence
+files — never narrated from memory.
 
 Alongside the prose report, render the post-mortem:
 

@@ -11,7 +11,7 @@ for (let i = 0; i < argv.length; i++) if (argv[i].startsWith('--')) { opts[argv[
 const DIR = typeof opts.dir === 'string' ? opts.dir : '.ailoop/campaign';
 const BACKLOG = path.join(DIR, 'backlog.json');
 
-const GLYPH = { draft: '·', vetted: '○', 'in-flight': '◐', closed: '●', blocked: '✕', decomposed: '▽', 'failed-wall': '■' };
+const GLYPH = { draft: '·', vetted: '○', 'in-flight': '◐', closed: '●', blocked: '✕', decomposed: '▽', parked: '■' };
 
 function render() {
   const b = JSON.parse(fs.readFileSync(BACKLOG, 'utf8'));
@@ -19,6 +19,21 @@ function render() {
   lines.push(`\n${b.project} — ${new Date().toLocaleTimeString()}`);
   const counts = b.tickets.reduce((m, t) => ((m[t.status] = (m[t.status] || 0) + 1), m), {});
   lines.push(Object.entries(GLYPH).map(([s, g]) => `${g} ${s}:${counts[s] || 0}`).join('  '));
+  // Two counts, because they answer different questions and can disagree: a
+  // campaign can be 8/8 tickets closed with a spec clause no ticket ever claimed.
+  const reqs = b.requirements || [];
+  if (reqs.length) {
+    // Same join frontier.mjs prints, so the two views can never disagree: a
+    // clause is proven only when EVERY ticket claiming it closed.
+    const claimants = new Map(reqs.map(r => [r.id, []]));
+    for (const t of b.tickets) {
+      if (t.status === 'decomposed') continue;
+      for (const r of t.satisfies || []) claimants.get(r)?.push(t);
+    }
+    const unmapped = [...claimants].filter(([, ts]) => !ts.length).map(([id]) => id);
+    const proven = [...claimants].filter(([, ts]) => ts.length && ts.every(t => t.status === 'closed'));
+    lines.push(`spec  ${proven.length}/${reqs.length} clauses closed${unmapped.length ? `  ⚠ unclaimed: ${unmapped.join(', ')}` : ''}`);
+  }
   lines.push('─'.repeat(72));
   const phases = [...new Set(b.tickets.map(t => t.phase))];
   for (const p of phases) {

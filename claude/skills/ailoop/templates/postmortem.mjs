@@ -43,7 +43,9 @@ for (const e of journal) {
   if (!/^T\d+$/.test(e.subject || '')) continue;
   const t = forTicket(e.subject);
   if (e.kind === 'status' && /→ in-flight/.test(e.body)) t.spans.push({ start: e.ts, end: null });
-  if (e.kind === 'attempt' || e.kind === 'close') {
+  // `parked` ends a span like a close does: the worker is gone and the decision
+  // left the loop. Without it the lane renders as still-running work.
+  if (e.kind === 'attempt' || e.kind === 'close' || e.kind === 'parked') {
     const open = t.spans.find(s => !s.end);
     if (open) { open.end = e.ts; open.outcome = e.kind; open.data = e.data || null; }
     if (e.kind === 'attempt') t.attempts++;

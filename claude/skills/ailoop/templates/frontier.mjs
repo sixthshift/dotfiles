@@ -5,12 +5,22 @@
 //
 // Usage: node frontier.mjs [--dir .ailoop/campaign]
 // Prints JSON: { problems, cycles, ready, dispatchable, capped, stuck,
-//                phasesDone, inFlight, complete }
+//                phasesDone, gateParked, inFlight, parked, stalled, complete,
+//                coverage }
 // inFlight is a fact, not a diagnosis: staleness = an entry you have no live
 // worker for (all of them, on resume) — that judgment is the coordinator's.
 // dispatchable ⊆ ready: safe to spawn NOW — file- and resource-disjoint from
 // every in-flight ticket and from each other. Streaming, re-run after each
 // worker returns; never a pre-baked batch to drain.
+// `stalled` and `parked` are the two halves of the drain decision: stalled says
+// no work is moving, parked says what the human owes an answer on. Neither is
+// permission to stop — the coordinator runs recover on a stall first, and only
+// drains when a second frontier read still says stalled.
+// `coverage` is the exception to this file's remit: every other field reads the
+// backlog against itself, and coverage reads it against the SPEC — the ids
+// intake enumerated, joined to the tickets claiming them. It is the only thing
+// that can notice work nobody wrote a ticket for while there is still time to
+// write one.
 
 import fs from 'node:fs';
 import path from 'node:path';
@@ -72,10 +82,11 @@ const ready = b.tickets
 
 // --- capped (hit the merit-attempt cap) & stuck (thrashing) — checked over
 //     READY tickets, before re-dispatch. Both are walls held out of dispatch
-//     until a human intervenes. Infra failures (worker session died, moved
-//     mainline) never count toward a wall — a ticket earns one only by failing
-//     on its own merits — but a large infraCap still stops a dead engine from
-//     re-dispatching forever. Mirror of src/campaign/frontier.ts findWalls.
+//     until recover has read the attempt hypotheses and either fixed the
+//     campaign definition at the root or spent its budget and parked them.
+//     Infra failures (worker session died, moved mainline) never count toward a
+//     wall — a ticket earns one only by failing on its own merits — but a large
+//     infraCap still stops a dead engine from re-dispatching forever.
 const INFRA_SENTINELS = new Set(['worker-channel', 'merge-conflict']);
 const isInfra = a => {
   if (a.infra) return true;
@@ -127,22 +138,62 @@ for (const id of notWalled) {
 // --- phasesDone: phases whose live tickets are all gone (and had at least one).
 //     Stays true once a phase is sealed — the coordinator filters already-closed
 //     phases against the journal; the frontier only knows the work is drained.
+//     A parked ticket is still live, so a phase holding one never drains — which
+//     is the intent: its gate would be measuring an incomplete phase.
 const phasesDone = [];
 for (const p of b.phases || []) {
   const ts = b.tickets.filter(t => t.phase === p.id);
   if (ts.length && ts.every(t => !live(t) )) phasesDone.push(p.id);
 }
+// A phase whose gate recover could not get green: latched for the human, so the
+// coordinator must not re-run it and must not read the phase as closeable.
+const gateParked = (b.phases || []).filter(p => p.parked).map(p => ({ id: p.id, reason: p.parked.reason }));
 
-// --- in-flight & completion
+// --- in-flight, parked, stall & completion
 const inFlightIds = inFlight.map(t => t.id);
+const parkedTickets = b.tickets.filter(t => t.status === 'parked')
+  .map(t => ({ id: t.id, reason: t.parked?.reason || '(reason not stamped — see the journal)' }));
 const complete = b.tickets.length > 0 && b.tickets.every(t =>
   ['closed', 'decomposed'].includes(t.status));
-// blocked/draft/vetted/failed-wall tickets all block completion, deliberately
+// blocked/draft/vetted/parked tickets all block completion, deliberately
+// Nothing is moving and nothing is finished. It is NOT a verdict — a stall is
+// recover's cue, and only a stall that survives recover is the human's.
+//
+// A draft ticket suppresses it: that is work the coordinator itself still owes
+// (the critic pass), and routing it to recover would ask an agent to fix a
+// campaign that is merely mid-turn. A `blocked` ticket deliberately does NOT
+// suppress it — blocked means "the coordinator will rewire this", so one still
+// sitting there when nothing else can move is exactly the wedge recover exists
+// for.
+const draftN = b.tickets.filter(t => t.status === 'draft').length;
+const stalled = !complete && dispatchable.length === 0 && inFlightIds.length === 0 && draftN === 0;
+
+// --- coverage: the spec-side reading of progress. Requirement ids come from the
+//     intake enumeration; a ticket claims them in `satisfies`. A decomposed
+//     parent's claim doesn't count — it delegated the work, and counting it
+//     would report a clause as mapped when the ticket meant to deliver it may
+//     never have been written. `proven` needs EVERY claiming ticket closed, not
+//     one: two tickets on a clause are two halves of it. Nothing here grades
+//     proof quality — a closed ticket only means its own checks went green at
+//     the boundary they observe; the terminal coverage pass still judges that.
+const claimants = new Map((b.requirements || []).map(r => [r.id, []]));
+for (const t of b.tickets) {
+  if (t.status === 'decomposed') continue;
+  for (const r of t.satisfies || []) claimants.get(r)?.push(t);
+}
+const unmapped = [];
+const proven = [];
+for (const [id, ts] of claimants) {
+  if (!ts.length) unmapped.push(id);
+  else if (ts.every(t => t.status === 'closed')) proven.push(id);
+}
 
 console.log(JSON.stringify({
   problems, cycles,
   ready, dispatchable,
   capped, stuck,
-  phasesDone, inFlight: inFlightIds, complete,
+  phasesDone, gateParked,
+  inFlight: inFlightIds, parked: parkedTickets, stalled, complete,
+  coverage: { requirements: (b.requirements || []).length, unmapped, proven },
   counts: b.tickets.reduce((m, t) => ((m[t.status] = (m[t.status] || 0) + 1), m), {}),
 }, null, 2));

@@ -56,6 +56,24 @@ Seed `outOfScope` the same way — the spec's Out-of-scope list, verbatim. It is
 the tripwire the gaming check reads per diff and phase-close reads per phase;
 frontier can't see feature-scope, so this list is the only place it lives.
 
+## 2b. Enumerate the spec's requirements
+
+In the same `seed`: `requirements`, every normative in-scope clause of the spec
+as `[{id: "R1", clause}, …]`. **This enumeration is made exactly once — here.**
+Tickets claim these ids, the frontier counts progress against them, and the
+final coverage pass grades proof clause by clause, so a clause you omit is one
+nothing downstream is looking for.
+
+Walk the *whole* spec — including failure behaviour, permissions, persistence,
+migration and compatibility, and stated non-functional requirements. One clause
+per requirement, worded so that whether it holds is decidable by inspection. Do
+not enumerate the exclusions (they are `outOfScope`) and do not restate
+implementation suggestions as requirements.
+
+An amendment may add a clause or reword one in place; it may never drop an id a
+ticket claims — the writer refuses that, because the claim would outlive the
+thing it points at.
+
 ## 3. Decompose the spec into draft tickets
 
 Break each phase into tickets sized for **one fresh worker session** — err
@@ -63,9 +81,15 @@ small; `tooBig` replies are healthy but not free. Near-term phases get full
 detail; later phases may be seeded coarse and refined while workers run.
 Every ticket: self-contained `context` (a worker with zero conversation
 memory must succeed from it), non-empty `files`, executable
-`acceptanceChecks`, `phase`, `origin` citing the spec section. Prefer
-input→output contrast checks over artifact-existence checks — existence is
-the most gameable form.
+`acceptanceChecks`, `phase`, `origin` citing the spec section, and `satisfies`
+naming the requirement ids it delivers. Prefer input→output contrast checks over
+artifact-existence checks — existence is the most gameable form.
+
+`satisfies` is the load-bearing half of the enumeration: an id claimed by no
+ticket reads as a gap (good — you go write the ticket), and an id claimed by a
+ticket that doesn't deliver it reads as coverage (bad — nothing downstream will
+disagree). Claim only what the ticket's own acceptance actually proves, and leave
+a clause unclaimed rather than parking it on the nearest ticket.
 
 If a ticket's checks *mutate* shared external state (a dev DB they reset, a
 queue, a local store), name it in the ticket's `resources` array — frontier
@@ -83,5 +107,9 @@ vetted; later phases can be vetted during the drive's wait time.
 ## 5. Pre-flight report to the human
 
 One message: the phases and their gates, ticket count, the first batch, any
-accepted risks, anything about the spec that surprised you. Then start the
-drive. No approval wait unless something in intake was genuinely ambiguous.
+accepted risks, anything about the spec that surprised you — and **the
+requirement enumeration, printed in full with the ticket claiming each clause**.
+This is the one moment a human sees the list, and a clause missed here is
+invisible to every count for the rest of the campaign; `coverage.unmapped` from
+the first frontier read belongs in this message too. Then start the drive. No
+approval wait unless something in intake was genuinely ambiguous.
