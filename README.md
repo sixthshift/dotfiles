@@ -38,13 +38,20 @@ cd ~/dotfiles
 ## Claude and Codex
 
 `claude/` is authoritative. The installer exposes the same universal
-instructions and six portable skills to Codex through `~/.codex/AGENTS.md` and
-individual symlinks under `~/.agents/skills`.
+instructions and the five portable skills to Codex through `~/.codex/AGENTS.md`
+and individual symlinks under `~/.agents/skills`.
 
-Claude's Workflow-based `ailoop` is deliberately excluded from Codex — it
-depends on the Workflow engine Codex doesn't have, and there is no Codex-native
-equivalent. Codex still gets `aispec`, so specs authored under Codex hand off to
-Claude's `ailoop` to build.
+**`~/.claude/skills` has two suppliers,** so it is a real directory with per-skill
+symlinks rather than one link to `claude/skills`. This repo owns the five general
+skills. The build-loop pair — `aispec` (spec interrogation) and `ailoop` (a model
+in a build loop's coordinator seat) — moved to the
+[`loop`](https://github.com/sixthshift/loop) project and arrive via
+`loop skills install`, because they are clients of that CLI's contract: a renamed
+verb or a tightened kickoff gate breaks them, so they version with it instead of
+drifting here. `loop skills install` refuses to write through a symlinked skills
+root, which is exactly why the whole-directory link had to go.
+
+So after `./install.sh` on a new machine, run `loop skills install` too.
 
 ## Adding a new tool
 

@@ -32,19 +32,28 @@ link() {
 # (history.jsonl, sessions/, projects/, plugins/) is preserved.
 link "claude/CLAUDE.md"      "$HOME/.claude/CLAUDE.md"
 link "claude/voice"          "$HOME/.claude/voice"
-link "claude/skills"         "$HOME/.claude/skills"
 link "claude/agents"         "$HOME/.claude/agents"
 link "claude/hooks"          "$HOME/.claude/hooks"
+
+# Skills link individually rather than as one directory, because ~/.claude/skills
+# has a second supplier: `loop skills install` puts ailoop and aispec there, and it
+# refuses to write through a symlinked skills root — installing into this
+# repository is exactly what that refusal is for. So the directory stays real and
+# each side owns its own entries.
+link "claude/skills/commit"           "$HOME/.claude/skills/commit"
+link "claude/skills/devcontainer"     "$HOME/.claude/skills/devcontainer"
+link "claude/skills/dotfiles-sync"    "$HOME/.claude/skills/dotfiles-sync"
+link "claude/skills/legibility-audit" "$HOME/.claude/skills/legibility-audit"
+link "claude/skills/new-project"      "$HOME/.claude/skills/new-project"
 # Uncomment once you've populated it (review the file first):
 # link "claude/settings.json"  "$HOME/.claude/settings.json"
 
 # --- Codex ---
 # Claude remains the master copy for shared instructions, voice, and portable
-# skills. Link skills individually so Claude-only ailoop (Workflow-based, no
-# Codex equivalent) is not exposed to Codex.
+# skills. (aispec reaches ~/.agents/skills via `loop skills install`, not from
+# here — it ships with the CLI whose gate defines its contract.)
 link "claude/CLAUDE.md"                    "$HOME/.codex/AGENTS.md"
 link "claude/voice"                        "$HOME/.codex/voice"
-link "claude/skills/aispec"                "$HOME/.agents/skills/aispec"
 link "claude/skills/commit"                "$HOME/.agents/skills/commit"
 link "claude/skills/devcontainer"          "$HOME/.agents/skills/devcontainer"
 link "claude/skills/dotfiles-sync"         "$HOME/.agents/skills/dotfiles-sync"
