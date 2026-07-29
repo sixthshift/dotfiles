@@ -21,7 +21,9 @@ Optional argument pins the intent:
   ```
 - Branch `main`, remote `origin` on GitHub. The repo is **public** — the secrets gate below is mandatory.
 - Transport is per-machine (VS Code's dotfiles feature clones over HTTPS): if push fails on auth, push one-off over SSH (`git push git@github.com:<owner>/dotfiles.git main`) — don't rewrite the remote.
-- `~/.claude/skills` is the master installation; Codex receives selected skill symlinks under `~/.agents/skills`. A pull can change skills available to the *running* session — always report skill changes for both agents.
+- `~/.claude/skills` is where skills are installed, but **not everything there belongs to this repo.** Its entries are per-skill symlinks from two suppliers: this repo owns `commit`, `devcontainer`, `dotfiles-sync`, `legibility-audit`, `new-project`, and the [`loop`](https://github.com/sixthshift/loop) project owns `ailoop` and `aispec` (installed by `loop skills install`). Codex receives a subset under `~/.agents/skills` the same way.
+- So if the user edited `ailoop` or `aispec`, **this skill is the wrong tool** — those changes are in loop's working tree and a dotfiles sync will honestly report nothing to commit. Say so and point at that repo rather than reporting a clean tree as success. Check with `realpath ~/.claude/skills/<name>` when unsure which repo a skill came from.
+- A pull can change skills available to the *running* session — always report skill changes for both agents.
 
 ## Procedure
 
