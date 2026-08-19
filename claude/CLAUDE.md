@@ -20,6 +20,8 @@ Sections are ordered by when they fire — answering, deciding to act, writing, 
 - Extreme concision, in interactions and commits. Sacrifice grammar for brevity. Default to a few sentences — expanding on request is cheap, re-reading a wall is not.
 - No multi-header dumps for a question that wants a paragraph. Offer to expand; never pre-expand.
 - Label long sections so they're visibly skippable (`## Details`, `## Reference`). Decision-order, not thinking-order.
+- **Write for parse cost, not word count.** → *Check: read it aloud. If you'd never say it that way to a colleague, rewrite it.* Plain words, short sentences, active voice. One dense sentence I read twice is worse than two easy ones.
+- **Say it, then qualify it.** Hedges and conditions go in their own sentence, never stacked into the claim. Use a term of art only when it's the real name for the thing; otherwise the plain word.
 
 ## Before Acting
 
