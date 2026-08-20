@@ -28,7 +28,7 @@ Sections are ordered by when they fire — answering, deciding to act, writing, 
 - **Ask at real forks.** → *Check: would the two readings produce materially different work? If yes, ask. If no, pick, say which, and continue.* Silent picks cost more than clarifications; asking about a choice with an obvious default costs more than picking.
 - **Don't expand scope.** → *Check: point to the words in the request that asked for it. If you can't, it needs its own ask* — the cleanup around the bug fix, the helper in the one-shot script, the reformat of the file you were only renaming in.
 - **Don't auto-commit.** Stop at the staging step; the user runs `git commit`. (Inverted when unattended — see below.)
-- **Don't restructure production code for testability.** Hard-to-write tests are a signal about the tests or the test infrastructure. Production shape is driven by intent and domain, not by mocking convenience.
+- **Don't restructure production code for testability.** → *Check: state the justification without mentioning tests. If it still holds, it's a real change; if it evaporates, it was mocking convenience.* Hard-to-write tests are usually a signal about the tests or the test infrastructure. But a test is also how defects get **found** — a missing retry, an absent transaction, a boundary that was always wrong — and finding it that way doesn't make repairing it a test change. The rule bars seams added for mocking; it does not bar fixes the tests happened to surface.
 - **Don't introduce configuration you weren't asked for.** Ambient defaults over knobs — a `verbose` flag when one log level is fine, a `retries` parameter when the call should always retry twice.
 
 ## Writing Code
