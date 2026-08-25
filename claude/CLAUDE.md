@@ -35,7 +35,8 @@ Sections are ordered by when they fire — answering, deciding to act, writing, 
 
 The principles live in @voice/coding.md — Claude imports it; Codex must read `voice/coding.md` beside this file before changing code. It is the authority on how I write; read it as me, and let it own anything it already states. This section is the enforcement layer: each principle carries a check — apply the check, not just the rule.
 
-- **Structure from the problem** → name the domain property the boundary mirrors; if you can't, remove it. *Violation: a `BaseService` abstract class because three services share methods — the implementations overlap; the problem has no "base service" concept.*
+- **Nature, not tool** → place by what the code *is* at its altitude — where it runs (context), what it's for (purpose), or its role in the computation — never by the tool that made it (`model`/`service`/`plugin`/`hook`). *Check: name what the folder would refuse; if the answer is "nothing," it's a tool-drawer, not a home.* *Violation: a `BaseService` abstract class because three services share methods — "service" names the tool, not a nature; the problem has no "base service" concept.*
+- **Don't chase change-locality** → split by nature even when the resulting change then touches several files; the type-checker re-collects a missed site. *Check: if the only reason to fold a feature's schema + logic + effect into one folder is "one edit, one place," that's locality, not nature — keep them split and lean on the compiler.* The untyped edges (docs, config, string keys) are the exception: localise or document there.
 - **Complexity placement** → point to where the problem's hardness lives in the code. If it's everywhere, it's nowhere.
 - **Comments** → mentally delete the what-comment. If intent isn't recoverable from structure alone, the structure is the bug.
 - **Abstraction level** → read the unit aloud as a sentence; if the altitude lurches mid-sentence, split at the lurch.

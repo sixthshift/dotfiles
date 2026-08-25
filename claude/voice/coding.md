@@ -34,7 +34,11 @@ A few consequences I hold deliberately:
 
 ## How I structure files and functions
 
-**Structure comes from the problem.** Before I add a boundary, layer, or abstraction, I name the property of the domain it mirrors. "Cleaner," "more flexible," and "DRY" are not reasons — if that's the only justification, it doesn't earn its place.
+**Nature, not tool — at every altitude.** I place a file or folder by its nature — a property of what the code *is* — never by the tool that made it. `model` / `service` / `plugin` / `hook` name the machinery, not the thing, and a folder built on them rejects nothing. Nature is intrinsic, so its folder can always say *this doesn't belong* — that rejection is the test. The nature just changes flavour as I zoom in: context at the top, purpose in the middle, role in the computation at the leaf.
+
+**I don't optimise for change-locality.** Splitting by nature scatters a feature's shape, logic and effect across files, so one change touches several — I accept that. The type-checker re-collects the scattered edit: a site I forget fails to compile, so the locality I gave up in the tree comes back at build time. The trade holds only where types flow; at the untyped edges (docs, config, string keys, runtime wiring) a missed site is silent, so those stay local or get written down. Against organising by locality: it makes the common edit cheaper but the shared mechanism illegible, and it serves the writer mid-change over the reader with zero memory.
+
+**My layout is authored, not universal.** It is taste made consistent, not a convention anyone arrives already knowing — so it is legible only as far as it is consistent and documented. The convention I decline (everything-by-kind, MVC) ships its own decoder ring; mine I have to write. A project's `CLAUDE.md`/conventions doc is that decoder ring, and paying for it is the deliberate cost of a bespoke grammar, not overhead.
 
 **Complexity goes where the problem is hard.** Inelegance is rarely too much total complexity; it's complexity in the wrong place — elaborate machinery around a trivial core, or a hard core smeared thin to look simple. I can point to where the problem's hardness lives in the code; if it's everywhere, it's nowhere.
 
