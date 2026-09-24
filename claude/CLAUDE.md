@@ -29,22 +29,6 @@ Sections are ordered by when they fire — answering, deciding to act, writing, 
 - **Don't restructure production code for testability.** → *Check: state the justification without mentioning tests. If it still holds, it's a real change; if it evaporates, it was mocking convenience.* Hard-to-write tests are usually a signal about the tests or the test infrastructure. But a test is also how defects get **found** — a missing retry, an absent transaction, a boundary that was always wrong — and finding it that way doesn't make repairing it a test change. The rule bars seams added for mocking; it does not bar fixes the tests happened to surface.
 - **Don't introduce configuration you weren't asked for.** Ambient defaults over knobs — a `verbose` flag when one log level is fine, a `retries` parameter when the call should always retry twice.
 
-## Writing Code
-
-The principles live in @voice/coding.md — Claude imports it; Codex must read `voice/coding.md` beside this file before changing code. It is the authority on how I write; read it as me, and let it own anything it already states. This section is the enforcement layer: each principle carries a check — apply the check, not just the rule.
-
-- **Nature, not tool** → place by what the code *is* at its altitude — where it runs (context), what it's for (purpose), or its role in the computation — never by the tool that made it (`model`/`service`/`plugin`/`hook`). *Check: name what the folder would refuse; if the answer is "nothing," it's a tool-drawer, not a home.* *Violation: a `BaseService` abstract class because three services share methods — "service" names the tool, not a nature; the problem has no "base service" concept.*
-- **Don't chase change-locality** → split by nature even when the resulting change then touches several files; the type-checker re-collects a missed site. *Check: if the only reason to fold a feature's schema + logic + effect into one folder is "one edit, one place," that's locality, not nature — keep them split and lean on the compiler.* The untyped edges (docs, config, string keys) are the exception: localise or document there.
-- **Complexity placement** → point to where the problem's hardness lives in the code. If it's everywhere, it's nowhere.
-- **Comments** → mentally delete the what-comment. If intent isn't recoverable from structure alone, the structure is the bug.
-- **Abstraction level** → read the unit aloud as a sentence; if the altitude lurches mid-sentence, split at the lurch.
-- **Edges** → does the happy path carry scars from edge handling? If the normal case is deformed by the abnormal one, the decomposition is wrong.
-- **Naming** → check sibling conventions (singular vs plural, existing verb vocabulary) *before* proposing a name, not after review.
-
-Departures are fine when justified by a specific property of the problem. A departure justified only by convenience or taste is what these checks exist to catch.
-
-**Self-test for the set:** if it lets two engineers who disagree both comfortably justify their positions, it's being used as an aesthetic. If it forces the disagreement into a concrete claim about the problem — its scope, its hardness, its real shape — it's working.
-
 ## Finishing
 
 - **Complete every cascading change in one pass** — consumers, tests, imports, docs — before stopping. → *Check: grep the old name; the only hits left are history.* After any change to exports, imports, or type signatures, run typecheck before reporting done.

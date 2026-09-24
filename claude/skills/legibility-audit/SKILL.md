@@ -7,7 +7,7 @@ description: Grade a codebase on how findable and trustable its structure is for
 
 Grade the repo's structure against a single reader model: **someone with zero memory of it** — the author two years later, or an agent at session start. Structure is good exactly insofar as it lets that reader load only what's relevant and trust it's complete.
 
-The judgment layer lives in `voice/coding.md` (ambient via the global `CLAUDE.md` or `AGENTS.md`) — this file is procedure only; cite the voice for rationale, don't restate it. This audit checks honesty *at rest* (does the structure tell the truth). Correctness, runtime honesty (fail-loud, boundary validation), and style are out of scope — those belong to code review and typecheck.
+The judgment layer lives in `voice/coding.md` — deprecated as ambient context, so read `~/.claude/voice/coding.md` explicitly before auditing — this file is procedure only; cite the voice for rationale, don't restate it. This audit checks honesty *at rest* (does the structure tell the truth). Correctness, runtime honesty (fail-loud, boundary validation), and style are out of scope — those belong to code review and typecheck.
 
 ## The checks
 

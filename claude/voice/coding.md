@@ -1,5 +1,8 @@
 # Coding Voice
 
+> [!WARNING]
+> **Deprecated 2026-09-23 — not loaded.** `CLAUDE.md` no longer imports this file, and Codex is no longer told to read it. Its `Writing Code` section, which restated these principles as checks, has since been cut as well — so nothing here is active guidance for either agent. Kept on disk because the deprecation is provisional; `legibility-audit` still reads it by explicit path.
+
 > My coding voice — the durable principles behind every file I write, independent of stack or project. This is the authority on *how* I write: drop it into any codebase and read it as me. Where an idiom is TypeScript-specific I say so; the principles underneath are not.
 
 ## The north star
