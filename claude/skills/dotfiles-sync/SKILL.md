@@ -62,7 +62,7 @@ If the tree is dirty and the intent was `pull`: stop and report the dirty files 
 3. **Commit via the commit skill.** Invoke the `commit` skill — it reads the staged changes, splits them into focused commits if they span concerns, and writes conventional-commit messages matching this repo's history (`feat(skills): ...`, `refactor(claude): ...`). Do not hand-roll commit logic here.
 4. **Push**: `git -C "$DOTFILES" push origin main`.
 
-This skill is the explicit exception to the "don't auto-commit" rule: invoking it *is* the ask to commit and push.
+This skill is the explicit exception to never committing unasked: invoking it *is* the ask to commit and push.
 
 ### 4. Both (diverged, or dirty + behind)
 
