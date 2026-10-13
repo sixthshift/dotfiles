@@ -62,7 +62,7 @@ link "claude/skills/new-project"           "$HOME/.agents/skills/new-project"
 
 # --- Shell ---
 # Uncomment as you populate. Pick the shell(s) you actually use.
-# link "shell/.zshrc"          "$HOME/.zshrc"
+link "shell/.zshrc"          "$HOME/.zshrc"
 # link "shell/.bashrc"         "$HOME/.bashrc"
 # link "shell/.shell-config.sh" "$HOME/.shell-config.sh"
 
