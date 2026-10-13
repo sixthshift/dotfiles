@@ -21,8 +21,7 @@ Claude config persists in `claude-config`. Host Codex auth is imported into the 
 ## Using Claude Code
 
 ```bash
-claude       # interactive
-clauded      # claude --dangerously-skip-permissions (alias)
+claude       # interactive; starts in auto mode, where a classifier reviews risky actions
 ```
 
 ## Using Codex
@@ -34,7 +33,7 @@ codexd       # codex --yolo (alias)
 
 ## Isolation model — what's actually true
 
-`clauded` and `codexd` are acceptable here because of what this container can and cannot reach:
+`codexd` skips Codex's approval prompts. That is acceptable here because of what this container can and cannot reach:
 
 - ✅ **No host filesystem** beyond this project's workspace and the explicit read-only Codex credential file.
 - ✅ **No SSH keys in the container** — agent forwarding only; keys can be used for git, never read.

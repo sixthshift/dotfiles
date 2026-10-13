@@ -1,6 +1,6 @@
 ---
 name: devcontainer
-description: Scaffold a project's devcontainer following my standard conventions (Debian + Bun + Claude Code in-container, isolated for --dangerously-skip-permissions). Use when asked to set up, recreate, or review a devcontainer for a project.
+description: Scaffold a project's devcontainer following my standard conventions (Debian + Bun + Claude Code in-container, isolated for agents running without approval prompts). Use when asked to set up, recreate, or review a devcontainer for a project.
 ---
 
 # Devcontainer Scaffold
@@ -100,7 +100,7 @@ Emit these always; do not drop them even if they look optional:
   - **Deliberately excluded: `mcp-language-server`.** Textually the worst offender in the Dockerfile (`go install …@latest` in a never-invalidated layer), but refreshing it is a Go compile — the wrong cost for a start hook. Bump it by rebuilding.
   - **Rejected alternatives:** pinning the CLIs in the version block (not build inputs; the bump would be manual forever); `postCreateCommand` (create-only, and a failed download leaves no CLI at all); `COPY` into the image (a start script shouldn't need a rebuild to edit).
   - **Do not also wire `postStartCommand` in devcontainer.json** — under VS Code both would fire and the script would run twice. The compose command is the single hook, because it's the only one that survives a plain `docker compose up`.
-- **`shell-config.sh` with the `clauded` and `codexd` aliases** (`claude --dangerously-skip-permissions` / `codex --yolo`), sourced from `/root/.bashrc` **off the workspace bind mount**, not `COPY`'d into the image — an alias edit should cost a new shell, not a rebuild. The `.bashrc` line is `[ -f … ] &&`-guarded so the image still opens a clean shell when run without the mount.
+- **`shell-config.sh` with the `codexd` alias** (`codex --yolo`), sourced from `/root/.bashrc` **off the workspace bind mount**, not `COPY`'d into the image — an alias edit should cost a new shell, not a rebuild. The `.bashrc` line is `[ -f … ] &&`-guarded so the image still opens a clean shell when run without the mount. There is deliberately no `clauded` (`claude --dangerously-skip-permissions`) alias: since v2.1.283 Claude Code starts in auto mode, which needs no bypass.
 - **Go + mcp-language-server + typescript-language-server** — the language-server binaries the LSP tool drives; part of the standard, not an extra. `typescript-language-server` is refreshed by `post-start.sh`; `mcp-language-server` is not (compile cost) — rebuild to bump it. The gate that *activates* the tool lives in the committed `.claude/settings.json` (above), not here — binary and gate are separate.
 - **`command: bash -c 'bash /workspace/.devcontainer/post-start.sh; exec sleep infinity'`** — invoked via the workspace bind mount, not a baked path, so the script is editable without a rebuild. `exec` keeps the idle process as PID 1 so the container stops cleanly. Plus `workspaceFolder`/`working_dir` `/workspace`, workspace bind `..:/workspace:cached`.
 - **`postCreateCommand` imports the host Codex auth, and nothing else.** `bun install` moved to `post-start.sh`. The auth copy stays create-only on purpose: re-running it every start would overwrite a token the container refreshed itself with an older one from the host, which breaks auth rather than fixing it.
